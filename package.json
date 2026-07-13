@@ -1,0 +1,16 @@
+{
+  "name": "gmc-creative-machine",
+  "private": true,
+  "scripts": {
+    "dev": "pnpm --filter dashboard dev",
+    "worker:dev": "pnpm --filter worker dev",
+    "db:migrate": "supabase db push",
+    "build": "pnpm -r build",
+    "lint": "pnpm -r lint",
+    "typecheck": "pnpm -r typecheck"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "packageManager": "pnpm@10.33.0"
+}
