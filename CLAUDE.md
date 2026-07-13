@@ -9,21 +9,6 @@ Full architecture: see GODMADE_SYSTEM_BUILD_PLAN.md (read it before any work).
 - apps/worker     — pipeline runner built on @anthropic-ai/claude-agent-sdk
 - packages/shared — Zod schemas (BBM, run payloads), generated DB types
 
-## Quickstart (Phase 0)
-
-1. **Create a Supabase project** at supabase.com (free tier is fine).
-2. **Create your single operator user**: Supabase dashboard → Authentication →
-   Users → Add user (email + password, confirm email manually). There is no
-   sign-up flow — this app is single-operator by design.
-3. **Configure env**: copy `.env.example` to `apps/dashboard/.env.local` and
-   fill in `NEXT_PUBLIC_SUPABASE_URL` + `NEXT_PUBLIC_SUPABASE_ANON_KEY`
-   (Project Settings → API). The worker reads `apps/worker/.env`
-   (`SUPABASE_URL` + `SUPABASE_SERVICE_ROLE_KEY`).
-4. **Apply migrations**: install the [Supabase CLI](https://supabase.com/docs/guides/cli),
-   then `supabase link --project-ref <your-ref>` and `pnpm db:migrate`.
-5. **Run**: `pnpm install`, then `pnpm dev` → http://localhost:3000, sign in,
-   add your first client.
-
 ## Conventions
 - All agent prompts live in apps/worker/prompts/*.md — never inline prompts in code
 - All agent outputs validated with Zod before DB writes; retry once on validation failure
@@ -37,4 +22,4 @@ Full architecture: see GODMADE_SYSTEM_BUILD_PLAN.md (read it before any work).
 - pnpm dev            — dashboard on :3000
 - pnpm worker:dev     — worker with hot reload
 - pnpm db:migrate     — apply Supabase migrations
-- pnpm pipeline:test  — run a pipeline against the fixture client with --depth quick (Phase 1)
+- pnpm pipeline:test  — run a pipeline against the fixture client with --depth quick

@@ -1,0 +1,6 @@
+# Supabase CLI config — only what Phase 0 needs.
+# `supabase link --project-ref <ref>` once, then `pnpm db:migrate`.
+project_id = "gmc-creative-machine"
+
+[db]
+major_version = 15
