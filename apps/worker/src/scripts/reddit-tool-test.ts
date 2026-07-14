@@ -1,4 +1,5 @@
 import "../env";
+import { z } from "zod";
 import { callActor, getApifyToken } from "../apify";
 import {
   buildSearchInput,
@@ -12,8 +13,8 @@ import {
 // builder + normalizer the tool uses, against the real actor. Exits 1 if
 // normalization yields no posts, printing raw vs normalized for diagnosis.
 
-const query = process.argv[2] ?? "tried everything can't lose weight busy work schedule";
-const subreddit = process.argv[3];
+const query = process.argv[2] ?? "fat loss plateau";
+const subreddit = process.argv[3] ?? (process.argv[2] ? undefined : "loseit");
 
 async function main() {
   const token = getApifyToken();
@@ -43,6 +44,11 @@ async function main() {
   console.log(
     `[reddit:test] normalized: ${posts.length} posts, ${nested} nested comments`,
   );
+  // Titles + subreddits up front — eyeball these for RELEVANCE to the query
+  // (an unrelated viral megathread here means the query itself is bad).
+  for (const post of posts) {
+    console.log(`[reddit:test]   r/${post.subreddit} (${post.num_comments} comments): ${post.title ?? "(comments-only stub)"}`);
+  }
   console.log(JSON.stringify(posts, null, 2).slice(0, 3000));
 
   if (posts.length === 0) {
@@ -51,7 +57,20 @@ async function main() {
     );
     process.exit(1);
   }
-  console.log(`[reddit:test] PASS — non-empty normalized posts`);
+
+  // Every url must pass the same check FindingSchema applies to source_url —
+  // relative permalinks here mean every finding dies in Zod validation.
+  const urlSchema = z.string().url();
+  const badUrls = posts
+    .flatMap((p) => [p.url, ...p.comments.map((c) => c.url)])
+    .filter((url) => !urlSchema.safeParse(url).success);
+  if (badUrls.length > 0) {
+    console.error(
+      `[reddit:test] FAILED — ${badUrls.length} normalized urls fail z.string().url(), e.g. ${badUrls[0]}`,
+    );
+    process.exit(1);
+  }
+  console.log(`[reddit:test] PASS — non-empty normalized posts, all urls absolute`);
 }
 
 main().catch((err) => {

@@ -33,6 +33,12 @@ type RunQueryOptions = {
   mcpTools?: string[];
   maxTurns: number;
   label: string;
+  /**
+   * Called with the Zod issues on each failed validation attempt (1 = first
+   * try, 2 = retry) — lets pipelines surface the real cause in warnings even
+   * when the retry "succeeds" by degrading to an empty result.
+   */
+  onValidationError?: (issues: string, attempt: number) => void;
 };
 
 // One agentic query() → Zod-validated JSON. The JSON schema is enforced by
@@ -109,12 +115,28 @@ export async function withValidationRetry<S extends z.ZodTypeAny>(
     if (!(err instanceof AgentValidationError)) throw err;
     const wastedCost = (err as unknown as { costUsd?: number }).costUsd ?? 0;
     console.warn(
-      `[${options.label}] output failed validation, retrying once with errors in prompt`,
+      `[${options.label}] output failed validation (attempt 1), retrying with errors in prompt:\n${err.issues}`,
     );
-    const retry = await runStructuredQuery(schema, {
-      ...options,
-      prompt: `${options.prompt}\n\nYour previous attempt produced JSON that failed schema validation with these errors — fix them:\n${err.issues}`,
-    });
-    return { ...retry, costUsd: retry.costUsd + wastedCost };
+    options.onValidationError?.(err.issues, 1);
+    try {
+      const retry = await runStructuredQuery(schema, {
+        ...options,
+        prompt: `${options.prompt}\n\nYour previous attempt produced JSON that failed schema validation with these errors — fix them:\n${err.issues}`,
+      });
+      return { ...retry, costUsd: retry.costUsd + wastedCost };
+    } catch (retryErr) {
+      if (retryErr instanceof AgentValidationError) {
+        console.warn(
+          `[${options.label}] output failed validation again (attempt 2):\n${retryErr.issues}`,
+        );
+        options.onValidationError?.(retryErr.issues, 2);
+      }
+      // keep attempt-1 spend in the error's cost accounting
+      const retryCost = (retryErr as { costUsd?: number })?.costUsd;
+      if (typeof retryCost === "number") {
+        (retryErr as { costUsd?: number }).costUsd = retryCost + wastedCost;
+      }
+      throw retryErr;
+    }
   }
 }

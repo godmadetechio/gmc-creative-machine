@@ -112,6 +112,12 @@ export async function runBuyerBrain(
   // Declared before the fan-out so custom tools can surface warnings into
   // output_json.warnings as they run (tool failures used to be silent).
   const warnings: string[] = [];
+  const validationWarner = (name: string) => (issues: string, attempt: number) =>
+    warnings.push(
+      `${name} output failed validation (attempt ${attempt}): ${
+        issues.length > 300 ? `${issues.slice(0, 300)}…` : issues
+      }`,
+    );
   console.log(`[buyer_brain] mining (depth=${input.depth}, model per WORKER_MODEL)…`);
   const settled = await Promise.allSettled(
     MINERS.map((name) => {
@@ -135,6 +141,7 @@ export async function runBuyerBrain(
           mcpTools: REDDIT_TOOL_NAMES,
           maxTurns: depth.maxTurns,
           label: name,
+          onValidationError: validationWarner(name),
         });
       }
       if (name === "youtube-miner") {
@@ -156,6 +163,7 @@ export async function runBuyerBrain(
           mcpTools: YOUTUBE_TOOL_NAMES,
           maxTurns: depth.maxTurns,
           label: name,
+          onValidationError: validationWarner(name),
         });
       }
       return withValidationRetry(MinerOutputSchema, {
@@ -163,6 +171,7 @@ export async function runBuyerBrain(
         tools: ["WebSearch", "WebFetch"],
         maxTurns: depth.maxTurns,
         label: name,
+        onValidationError: validationWarner(name),
       });
     }),
   );

@@ -22,18 +22,28 @@ beyond the budget — when that happens, stop and return what you have.
 
 ## Process
 
-1. Plan 2-3 angle-specific queries — the complaint, the failed solution,
-   the buying decision — not just the topic name. Scope to subreddits
-   where this audience actually posts when it sharpens the signal
-   (e.g. for a fat-loss niche: loseit, fitness30plus, WeightLossAdvice;
-   include adjacent subreddits where they complain about the problem).
-2. Use `sort` "relevance" or "top" with `time` "year" for evergreen pain;
-   "comments" surfaces the most argued threads.
-3. COMMENTS ARE YOUR PRIORITY SOURCE for verbatim quotes: post bodies set
+1. Plan 2-3 queries as SHORT KEYWORD PHRASES — 2-4 words max, the way real
+   people search Reddit. Reddit search handles long conversational queries
+   terribly: it loosely matches one word and returns viral unrelated
+   threads. Cover different angles — the complaint, the failed solution,
+   the buying decision.
+   GOOD (for a fat-loss niche): "fat loss plateau", "personal trainer
+   scam", "diet stress eating", "cant stay consistent", "meal prep
+   burnout".
+   BAD: "is hiring a fat loss coach worth it skeptical about cookie
+   cutter plans".
+2. Scope AT LEAST HALF of your calls to a relevant subreddit via the
+   `subreddit` param (e.g. for a fat-loss niche: loseit, fitness30plus,
+   WeightLossAdvice, xxfitness) — scoped search is far more precise than
+   all-Reddit search.
+3. Use `sort` "relevance" (default) or "top" with `time` "year". Avoid
+   sort "comments" — it biases toward viral megathreads that match your
+   query loosely.
+4. COMMENTS ARE YOUR PRIORITY SOURCE for verbatim quotes: post bodies set
    the topic, but the unfiltered confessions, objections, and failure
    stories live in the comments. Spend a remaining call on thread mode
    only when a high-num_comments post clearly deserves a deeper pull.
-4. For each strong signal, capture the VERBATIM quote (do not paraphrase)
+5. For each strong signal, capture the VERBATIM quote (do not paraphrase)
    and classify: pain / desire / belief / pattern.
 
 What counts as a strong signal:
