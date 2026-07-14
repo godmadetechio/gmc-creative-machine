@@ -109,6 +109,9 @@ export async function runBuyerBrain(
   // JS-rendered). Without APIFY_TOKEN those miners are skipped (fulfilled
   // null) rather than failing the run.
   const apifyToken = getApifyToken();
+  // Declared before the fan-out so custom tools can surface warnings into
+  // output_json.warnings as they run (tool failures used to be silent).
+  const warnings: string[] = [];
   console.log(`[buyer_brain] mining (depth=${input.depth}, model per WORKER_MODEL)…`);
   const settled = await Promise.allSettled(
     MINERS.map((name) => {
@@ -126,6 +129,7 @@ export async function runBuyerBrain(
             reddit: createRedditMcpServer({
               token: apifyToken,
               ...depth.reddit,
+              onWarning: (message) => warnings.push(`reddit-miner: ${message}`),
             }),
           },
           mcpTools: REDDIT_TOOL_NAMES,
@@ -146,6 +150,7 @@ export async function runBuyerBrain(
             youtube: createYoutubeMcpServer({
               token: apifyToken,
               ...depth.youtube,
+              onWarning: (message) => warnings.push(`youtube-miner: ${message}`),
             }),
           },
           mcpTools: YOUTUBE_TOOL_NAMES,
@@ -162,7 +167,6 @@ export async function runBuyerBrain(
     }),
   );
 
-  const warnings: string[] = [];
   const findingCounts = {} as Record<MinerName, number>;
   const findingsByMiner: Partial<Record<MinerName, Finding[]>> = {};
 
@@ -182,7 +186,7 @@ export async function runBuyerBrain(
       console.log(`[buyer_brain] ${name}: ${findingCounts[name]} findings`);
       if (findingCounts[name] === 0) {
         warnings.push(
-          `${name} returned 0 findings — check its prompt or source access`,
+          `${name} returned 0 findings — check the tool warnings in this list and the per-call tool logs in the worker console for where the data was lost`,
         );
         console.warn(`[buyer_brain] ${name} returned 0 findings`);
       }

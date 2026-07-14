@@ -44,12 +44,17 @@ function truncate(text: string, max: number): string {
 
 type RawItem = Record<string, unknown>;
 
+// Classify by dataType when recognized, by shape otherwise. NEVER silently
+// drop an unknown dataType that carries text — that is exactly how the v5
+// run lost 16 real items to a mapping mismatch.
 export function itemKind(item: RawItem): "post" | "comment" | "other" {
   const dataType = str(item.dataType).toLowerCase();
   if (dataType === "post") return "post";
   if (dataType === "comment") return "comment";
-  // fallback when dataType is absent: posts have titles, comments don't
-  if (dataType === "") return str(item.title) ? "post" : "comment";
+  if (dataType === "community" || dataType === "user") return "other";
+  // unknown or missing dataType — fall back to shape
+  if (str(item.title)) return "post";
+  if (str(item.body ?? item.text ?? item.selftext)) return "comment";
   return "other";
 }
 
@@ -57,6 +62,10 @@ export function itemKind(item: RawItem): "post" | "comment" | "other" {
 // re-nested under their post by the thread id in the permalink.
 function threadId(url: string): string | null {
   return url.match(/\/comments\/([a-z0-9]+)/i)?.[1] ?? null;
+}
+
+function threadRootUrl(url: string): string {
+  return url.match(/^(.*\/comments\/[a-z0-9]+)/i)?.[1] ?? url;
 }
 
 export function normalizeItems(
@@ -93,8 +102,28 @@ export function normalizeItems(
     const body = str(item.body ?? item.text);
     if (!body || body === "[deleted]" || body === "[removed]") continue;
     const url = str(item.url ?? item.link ?? item.permalink);
-    const id = threadId(url ?? "");
-    const post = id ? byThread.get(id) : undefined;
+    const id = threadId(url);
+
+    // Comment whose post item isn't in the result set: don't drop the data —
+    // synthesize a stub post for its thread (the actor sometimes returns
+    // comments without their parent post item).
+    let post = id ? byThread.get(id) : undefined;
+    if (!post && id && posts.length < maxPosts) {
+      post = {
+        title: null,
+        body: "",
+        url: `${threadRootUrl(url)}/`,
+        subreddit: str(
+          item.parsedCommunityName ?? item.communityName ?? item.subreddit,
+        ).replace(/^\/?r\//, ""),
+        upvotes: 0,
+        num_comments: 0,
+        created_at: str(item.createdAt ?? item.created_at),
+        comments: [],
+      };
+      posts.push(post);
+      byThread.set(id, post);
+    }
     if (!post || post.comments.length >= maxCommentsPerPost) continue;
     post.comments.push({
       body: truncate(body, 800),
@@ -104,6 +133,54 @@ export function normalizeItems(
   }
 
   return posts;
+}
+
+export type SearchArgs = {
+  query: string;
+  subreddit?: string;
+  sort?: string;
+  time?: string;
+  maxPosts: number;
+  maxCommentsPerPost: number;
+};
+
+// Exported so the live check script exercises the exact same input the
+// tool sends (see scripts/reddit-tool-test.ts).
+export function buildSearchInput(args: SearchArgs) {
+  return {
+    searches: [args.query],
+    ...(args.subreddit
+      ? { searchCommunityName: args.subreddit.replace(/^\/?r\//, "") }
+      : {}),
+    searchPosts: true,
+    searchComments: false,
+    skipComments: false,
+    maxComments: args.maxCommentsPerPost,
+    maxItems: args.maxPosts,
+    sort: args.sort ?? "relevance",
+    time: args.time ?? "year",
+    includeNSFW: false,
+    includeMediaLinks: false,
+    proxy: { useApifyProxy: true },
+  };
+}
+
+export function buildThreadInput(postUrl: string, maxCommentsPerPost: number) {
+  return {
+    startUrls: [{ url: postUrl }],
+    skipComments: false,
+    maxComments: maxCommentsPerPost,
+    maxItems: 1 + maxCommentsPerPost,
+    includeNSFW: false,
+    includeMediaLinks: false,
+    proxy: { useApifyProxy: true },
+  };
+}
+
+export function summarizeRawItems(items: RawItem[]): string {
+  const kinds = { post: 0, comment: 0, other: 0 };
+  for (const item of items) kinds[itemKind(item)]++;
+  return `${items.length} raw (posts ${kinds.post}, comments ${kinds.comment}, other ${kinds.other})`;
 }
 
 function asToolResult(payload: unknown) {
@@ -123,6 +200,8 @@ export type RedditToolsConfig = {
   maxCalls: number;
   maxPosts: number;
   maxCommentsPerPost: number;
+  /** Surfaces tool-level problems into the run's output_json.warnings. */
+  onWarning?: (message: string) => void;
 };
 
 export function createRedditMcpServer({
@@ -130,12 +209,13 @@ export function createRedditMcpServer({
   maxCalls,
   maxPosts,
   maxCommentsPerPost,
+  onWarning,
 }: RedditToolsConfig): McpSdkServerConfigWithInstance {
   let callsUsed = 0;
 
   return createSdkMcpServer({
     name: "reddit",
-    version: "3.0.0",
+    version: "3.1.0",
     tools: [
       tool(
         "reddit_research",
@@ -186,43 +266,33 @@ export function createRedditMcpServer({
           );
 
           const input = args.postUrl
-            ? {
-                startUrls: [{ url: args.postUrl }],
-                skipComments: false,
-                maxComments: comments,
-                maxItems: 1 + comments,
-                includeNSFW: false,
-                includeMediaLinks: false,
-                proxy: { useApifyProxy: true },
-              }
-            : {
-                searches: [args.query],
-                ...(args.subreddit
-                  ? { searchCommunityName: args.subreddit.replace(/^\/?r\//, "") }
-                  : {}),
-                searchPosts: true,
-                searchComments: false,
-                skipComments: false,
-                maxComments: comments,
-                maxItems: posts,
-                sort: args.sort ?? "relevance",
-                time: args.time ?? "year",
-                includeNSFW: false,
-                includeMediaLinks: false,
-                proxy: { useApifyProxy: true },
-              };
+            ? buildThreadInput(args.postUrl, comments)
+            : buildSearchInput({ ...args, query: args.query!, maxPosts: posts, maxCommentsPerPost: comments });
 
           try {
             const items = await callActor<RawItem>(REDDIT_ACTOR_ID, input, { token });
+            const normalized = normalizeItems(items, {
+              maxPosts: args.postUrl ? 1 : posts,
+              maxCommentsPerPost: comments,
+            });
+            const nested = normalized.reduce((sum, p) => sum + p.comments.length, 0);
+            console.log(
+              `[reddit_research] ${summarizeRawItems(items)} → ${normalized.length} posts, ${nested} nested comments`,
+            );
+            if (items.length > 0 && normalized.length === 0) {
+              const message = `reddit_research normalized 0 posts from ${items.length} raw items — field mapping mismatch; sample raw item: ${truncate(JSON.stringify(items[0]), 600)}`;
+              console.warn(`[reddit_research] ${message}`);
+              onWarning?.(message);
+            }
             return asToolResult({
-              posts: normalizeItems(items, {
-                maxPosts: args.postUrl ? 1 : posts,
-                maxCommentsPerPost: comments,
-              }),
+              posts: normalized,
               calls_remaining: maxCalls - callsUsed,
             });
           } catch (err) {
-            return asToolError(err instanceof Error ? err.message : String(err));
+            const message = err instanceof Error ? err.message : String(err);
+            console.warn(`[reddit_research] call failed: ${message}`);
+            onWarning?.(`reddit_research call failed: ${message}`);
+            return asToolError(message);
           }
         },
       ),
