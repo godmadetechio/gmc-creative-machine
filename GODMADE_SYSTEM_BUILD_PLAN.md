@@ -185,6 +185,30 @@ INPUT: { selected ads (winners), BBM, operator_prompt, feedback history }
 
 Also from your diagram: approved winners get logged into a **Winning Creative Doc** per client (a living document of what worked — the composer references it in future rounds).
 
+### The Client Asset Library (feeds Steps 2 & 3)
+
+Pure text-to-image ads are the floor, not the ceiling. The generation agents get dramatically better when every client has a curated asset library the prompt compiler can pull from:
+
+```
+client_assets
+  id, client_id, kind ('owner_photo' | 'logo' | 'product_shot' | 'lifestyle_photo' |
+  'example_ad' | 'inspiration_ad' | 'testimonial_screenshot' | 'brand_doc'),
+  storage_path, drive_file_id, notes (text), tags, created_at
+
+clients.brand_json            ← brand kit: colors (hex), fonts, tone-of-voice notes,
+                                 do/don't rules ("never show scales", "no red")
+```
+
+How generation consumes it — Nano Banana (Gemini image API) accepts **multiple input images alongside the text prompt**, which unlocks three modes the prompt compiler chooses between:
+
+- **Identity mode**: owner photos passed as reference → the generated ad features the actual client (consistent likeness), not a synthetic face. Real faces outperform AI faces in most coaching/personal-brand niches, and it sidesteps AI-likeness disclosure issues.
+- **Style/layout mode**: an `example_ad` or `inspiration_ad` passed as reference → "rebuild this layout/energy with OUR hook and OUR brand colors." This is exactly how the 1.B winners become templates — selected ads from Creative Selection auto-register here as `inspiration_ad` assets.
+- **Product mode**: real product/lifestyle shots composited into generated scenes instead of hallucinated ones.
+
+Dashboard side: an **Assets tab** on the client page — drag-and-drop upload to Supabase Storage (mirrored to the client's Drive folder), kind selector, notes field ("this is Ben's preferred headshot", "client hates this style"). The Step 2/3 concept agents receive the asset manifest and pick references per concept; the prompt compiler attaches the actual images to the generation call.
+
+Onboarding implication: collecting owner photos, logo, brand colors, and 3-5 ads the client likes/hates becomes part of your client intake form — 15 minutes of collection that upgrades every creative the machine ever makes for them.
+
 ## 7. Step 3 — Video Ad Creation (Claude × Higgsfield / Arcads)
 
 Same skeleton as Step 2, different generation backend:
@@ -211,8 +235,11 @@ Worker service with the Claude Agent SDK, the 4 miner subagents + composer, BBM 
 ### Phase 2 — Creative Selection (1–2 sessions)
 Apify integration, search-term derivation agent, cross-reference scoring agent, ad_candidates table, and the swipe-style review queue in the dashboard. **Definition of done:** one click → 25 scored competitor ads with rationale, you select winners in the UI.
 
+### Phase 2.5 — Client Asset Library (1 session)
+The `client_assets` table + `clients.brand_json`, Supabase Storage upload, the Assets tab on the client page, and auto-registration of 1.B selected ads as inspiration assets. **Definition of done:** upload owner photos, logo, brand colors, and reference ads for a client; the data is queryable by kind.
+
 ### Phase 3 — Still Ads (1–2 sessions)
-Concept agent + prompt compiler + Gemini/Nano Banana integration, Drive upload, creative review queue with feedback capture. **Definition of done:** select 5 winning ads → get 15 static variants + 3 carousels in Drive and in the dashboard for approval.
+Concept agent + prompt compiler + Gemini/Nano Banana integration (multi-image input: identity/style/product reference modes from the asset library), Drive upload, creative review queue with feedback capture. **Definition of done:** select 5 winning ads → get 15 static variants + 3 carousels in Drive and in the dashboard for approval, featuring the client's real face/brand where assets exist.
 
 ### Phase 4 — Video Ads (1–2 sessions)
 Script agent, Higgsfield API integration, Arcads manual handoff view. **Definition of done:** approved concepts → UGC + HERO ARC videos land in Drive.
