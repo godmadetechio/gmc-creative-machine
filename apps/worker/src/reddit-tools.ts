@@ -187,6 +187,14 @@ export function buildThreadInput(postUrl: string, maxCommentsPerPost: number) {
   };
 }
 
+// Reddit search degrades badly on long conversational queries (loose
+// one-word matches, viral megathreads). Visibility only — never blocks.
+export function longQueryWarning(query: string): string | null {
+  const words = query.trim().split(/\s+/).filter(Boolean).length;
+  if (words <= 5) return null;
+  return `reddit_research query has ${words} words — Reddit search handles long queries poorly and may return unrelated viral threads; use 2-4 word keyword phrases. Query: "${truncate(query, 120)}"`;
+}
+
 export function summarizeRawItems(items: RawItem[]): string {
   const kinds = { post: 0, comment: 0, other: 0 };
   for (const item of items) kinds[itemKind(item)]++;
@@ -229,17 +237,24 @@ export function createRedditMcpServer({
     tools: [
       tool(
         "reddit_research",
-        `Research Reddit via a scraper actor (pay-per-result — plan calls, don't explore one post at a time; each call takes ~30-90s). Two modes: (1) search mode — pass query (plus optional subreddit/sort/time) to get posts WITH their top comments nested; (2) thread mode — pass postUrl to deep-dive one thread's comments. Returns { posts: [{ title, body, url, subreddit, upvotes, num_comments, created_at, comments: [{ body, upvotes, url }] }] }; url fields are real Reddit permalinks.`,
+        `Research Reddit via a scraper actor (pay-per-result — plan calls, don't explore one post at a time; each call takes ~30-90s). Two modes: (1) search mode — pass query (plus optional subreddit/sort/time) to get posts WITH their top comments nested; (2) thread mode — pass postUrl to deep-dive one thread's comments. IMPORTANT: queries must be SHORT keyword phrases, 2-4 words, the way people search Reddit ("fat loss plateau", not a sentence) — Reddit search loosely matches long queries and returns unrelated viral threads. Prefer scoping via subreddit. Returns { posts: [{ title, body, url, subreddit, upvotes, num_comments, created_at, comments: [{ body, upvotes, url }] }] }; url fields are real Reddit permalinks.`,
         {
-          query: z.string().optional().describe("Search query (search mode)"),
+          query: z
+            .string()
+            .optional()
+            .describe(
+              "Search query (search mode) — a SHORT keyword phrase, 2-4 words (e.g. 'fat loss plateau'), never a sentence",
+            ),
           subreddit: z
             .string()
             .optional()
-            .describe("Restrict search to one subreddit, e.g. 'loseit' (no r/ prefix)"),
+            .describe("Restrict search to one subreddit, e.g. 'loseit' (no r/ prefix) — prefer this for precision"),
           sort: z
             .enum(["relevance", "hot", "top", "new", "rising", "comments"])
             .optional()
-            .describe("Search sort (default relevance; 'comments' = most discussed)"),
+            .describe(
+              "Search sort (default relevance; 'top' also good; avoid 'comments' — it biases toward viral megathreads)",
+            ),
           time: z
             .enum(["hour", "day", "week", "month", "year", "all"])
             .optional()
@@ -274,6 +289,14 @@ export function createRedditMcpServer({
             args.maxCommentsPerPost ?? maxCommentsPerPost,
             maxCommentsPerPost,
           );
+
+          if (!args.postUrl && args.query) {
+            const warning = longQueryWarning(args.query);
+            if (warning) {
+              console.warn(`[reddit_research] ${warning}`);
+              onWarning?.(warning);
+            }
+          }
 
           const input = args.postUrl
             ? buildThreadInput(args.postUrl, comments)
