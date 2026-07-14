@@ -30,8 +30,8 @@ Full architecture: see GODMADE_SYSTEM_BUILD_PLAN.md (read it before any work).
 - Every research claim in a BBM must carry a source_url + verbatim quote
 - Runs are background jobs; never run pipelines inside HTTP request handlers
 - Track token cost per run in runs.cost_usd
-- Env vars in .env.local (never commit): ANTHROPIC_API_KEY, SUPABASE_*, REDDIT_*,
-  APIFY_TOKEN, GEMINI_API_KEY, HIGGSFIELD_API_KEY, GOOGLE_DRIVE_*
+- Env vars in .env.local (never commit): ANTHROPIC_API_KEY, SUPABASE_*, APIFY_TOKEN,
+  GEMINI_API_KEY, HIGGSFIELD_API_KEY, GOOGLE_DRIVE_*
 
 ## Commands
 - pnpm dev            — dashboard on :3000
@@ -45,8 +45,8 @@ Full architecture: see GODMADE_SYSTEM_BUILD_PLAN.md (read it before any work).
 Click **Run Buyer Brain** on a client page (dashboard) or use
 `pnpm pipeline:test`. The worker (`pnpm worker:dev`) picks up queued runs:
 four research miners (forum / reddit / news / youtube) run in parallel via the
-Claude Agent SDK — web search + fetch for most, the official Reddit Data API
-(custom agent tools; needs `REDDIT_*` env vars, else that miner is skipped)
+Claude Agent SDK — web search + fetch for most, an Apify Reddit scraper actor
+(custom agent tools; needs `APIFY_TOKEN`, else that miner is skipped)
 for reddit — and a composer merges their findings
 into the Buyer Brain Matrix, and the result is written to `bbm_versions`
 (version incremented, previous active version deactivated). View it at

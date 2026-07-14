@@ -9,8 +9,8 @@ import {
   type Finding,
 } from "@gmc/shared";
 import { withValidationRetry, type AgentUsage } from "../agent";
+import { getApifyToken } from "../apify";
 import { loadPrompt } from "../prompts";
-import { getRedditCredentials } from "../reddit";
 import { createRedditMcpServer, REDDIT_TOOL_NAMES } from "../reddit-tools";
 import type { PipelineHandler } from "./index";
 
@@ -19,8 +19,8 @@ type MinerName = (typeof MINERS)[number];
 
 // depth 'quick' exists so prompt iteration doesn't cost 30 minutes per test.
 const DEPTH_CONFIG = {
-  quick: { maxSearches: "3", minFindings: 5, maxTurns: 12 },
-  full: { maxSearches: "12-15", minFindings: 20, maxTurns: 40 },
+  quick: { maxSearches: "3", minFindings: 5, maxTurns: 12, redditMaxItems: 20 },
+  full: { maxSearches: "12-15", minFindings: 20, maxTurns: 40, redditMaxItems: 100 },
 } as const;
 
 export type BuyerBrainResult = {
@@ -89,19 +89,24 @@ export async function runBuyerBrain(
   };
 
   // ── 1. Four miners in parallel ─────────────────────────────────────────
-  // reddit-miner uses the official Reddit Data API via custom MCP tools
-  // (Reddit blocks all unauthenticated fetches); without credentials it is
+  // reddit-miner goes through an Apify actor exposed as custom MCP tools
+  // (Reddit blocks all unauthenticated fetches); without APIFY_TOKEN it is
   // skipped (fulfilled null) rather than failing the run.
-  const redditCreds = getRedditCredentials();
+  const apifyToken = getApifyToken();
   console.log(`[buyer_brain] mining (depth=${input.depth}, model per WORKER_MODEL)…`);
   const settled = await Promise.allSettled(
     MINERS.map((name) => {
       if (name === "reddit-miner") {
-        if (!redditCreds) return Promise.resolve(null);
+        if (!apifyToken) return Promise.resolve(null);
         return withValidationRetry(MinerOutputSchema, {
           prompt: loadPrompt(name, minerVars),
           tools: [],
-          mcpServers: { reddit: createRedditMcpServer(redditCreds) },
+          mcpServers: {
+            reddit: createRedditMcpServer({
+              token: apifyToken,
+              maxItemsCap: depth.redditMaxItems,
+            }),
+          },
           mcpTools: REDDIT_TOOL_NAMES,
           maxTurns: depth.maxTurns,
           label: name,
@@ -126,10 +131,8 @@ export async function runBuyerBrain(
     if (outcome.status === "fulfilled") {
       if (outcome.value === null) {
         findingCounts[name] = 0;
-        warnings.push(
-          `${name} skipped: REDDIT_CLIENT_ID / REDDIT_CLIENT_SECRET / REDDIT_USER_AGENT not set`,
-        );
-        console.warn(`[buyer_brain] ${name} skipped — Reddit credentials not set`);
+        warnings.push(`${name} skipped: APIFY_TOKEN not set`);
+        console.warn(`[buyer_brain] ${name} skipped — APIFY_TOKEN not set`);
         continue;
       }
       cost.add(name, outcome.value.costUsd, outcome.value.usage);
