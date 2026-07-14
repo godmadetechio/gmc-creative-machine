@@ -12,26 +12,29 @@ import { withValidationRetry, type AgentUsage } from "../agent";
 import { getApifyToken } from "../apify";
 import { loadPrompt } from "../prompts";
 import { createRedditMcpServer, REDDIT_TOOL_NAMES } from "../reddit-tools";
+import { createYoutubeMcpServer, YOUTUBE_TOOL_NAMES } from "../youtube-tools";
 import type { PipelineHandler } from "./index";
 
 const MINERS = ["forum-miner", "reddit-miner", "news-miner", "youtube-miner"] as const;
 type MinerName = (typeof MINERS)[number];
 
 // depth 'quick' exists so prompt iteration doesn't cost 30 minutes per test.
-// reddit budgets are hard caps enforced in the tool server — the actor is
-// pay-per-result.
+// reddit/youtube budgets are hard caps enforced in the tool servers — the
+// actors are pay-per-result.
 const DEPTH_CONFIG = {
   quick: {
     maxSearches: "3",
     minFindings: 5,
     maxTurns: 12,
     reddit: { maxCalls: 2, maxPosts: 8, maxCommentsPerPost: 10 },
+    youtube: { maxVideos: 3, maxCommentsPerVideo: 20 },
   },
   full: {
     maxSearches: "12-15",
     minFindings: 20,
     maxTurns: 40,
     reddit: { maxCalls: 5, maxPosts: 15, maxCommentsPerPost: 25 },
+    youtube: { maxVideos: 5, maxCommentsPerVideo: 50 },
   },
 } as const;
 
@@ -101,9 +104,10 @@ export async function runBuyerBrain(
   };
 
   // ── 1. Four miners in parallel ─────────────────────────────────────────
-  // reddit-miner goes through an Apify actor exposed as custom MCP tools
-  // (Reddit blocks all unauthenticated fetches); without APIFY_TOKEN it is
-  // skipped (fulfilled null) rather than failing the run.
+  // reddit-miner and youtube-miner go through Apify actors exposed as custom
+  // MCP tools (Reddit blocks unauthenticated fetches; YouTube comments are
+  // JS-rendered). Without APIFY_TOKEN those miners are skipped (fulfilled
+  // null) rather than failing the run.
   const apifyToken = getApifyToken();
   console.log(`[buyer_brain] mining (depth=${input.depth}, model per WORKER_MODEL)…`);
   const settled = await Promise.allSettled(
@@ -125,6 +129,26 @@ export async function runBuyerBrain(
             }),
           },
           mcpTools: REDDIT_TOOL_NAMES,
+          maxTurns: depth.maxTurns,
+          label: name,
+        });
+      }
+      if (name === "youtube-miner") {
+        if (!apifyToken) return Promise.resolve(null);
+        return withValidationRetry(MinerOutputSchema, {
+          prompt: loadPrompt(name, {
+            ...minerVars,
+            max_videos: depth.youtube.maxVideos,
+            max_comments_per_video: depth.youtube.maxCommentsPerVideo,
+          }),
+          tools: ["WebSearch"],
+          mcpServers: {
+            youtube: createYoutubeMcpServer({
+              token: apifyToken,
+              ...depth.youtube,
+            }),
+          },
+          mcpTools: YOUTUBE_TOOL_NAMES,
           maxTurns: depth.maxTurns,
           label: name,
         });
