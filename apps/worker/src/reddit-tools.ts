@@ -58,6 +58,16 @@ export function itemKind(item: RawItem): "post" | "comment" | "other" {
   return "other";
 }
 
+// The actor returns permalinks as RELATIVE paths (/r/sub/comments/…) —
+// passed through raw they fail FindingSchema's url() check and every
+// finding built on them dies in validation. Absolutize at the source.
+export function absolutizeRedditUrl(url: string): string {
+  if (!url || /^https?:\/\//i.test(url)) return url;
+  return url.startsWith("/")
+    ? `https://www.reddit.com${url}`
+    : `https://www.reddit.com/${url}`;
+}
+
 // The actor returns a flat list of post and comment items; comments are
 // re-nested under their post by the thread id in the permalink.
 function threadId(url: string): string | null {
@@ -77,7 +87,7 @@ export function normalizeItems(
 
   for (const item of items) {
     if (itemKind(item) !== "post" || posts.length >= maxPosts) continue;
-    const url = str(item.url ?? item.link ?? item.permalink);
+    const url = absolutizeRedditUrl(str(item.url ?? item.link ?? item.permalink));
     const post: RedditPost = {
       title: str(item.title) || null,
       body: truncate(str(item.body ?? item.text ?? item.selftext), 1200),
@@ -101,7 +111,7 @@ export function normalizeItems(
     if (itemKind(item) !== "comment") continue;
     const body = str(item.body ?? item.text);
     if (!body || body === "[deleted]" || body === "[removed]") continue;
-    const url = str(item.url ?? item.link ?? item.permalink);
+    const url = absolutizeRedditUrl(str(item.url ?? item.link ?? item.permalink));
     const id = threadId(url);
 
     // Comment whose post item isn't in the result set: don't drop the data —

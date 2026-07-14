@@ -1,4 +1,5 @@
 import "../env";
+import { z } from "zod";
 import { callActor, getApifyToken } from "../apify";
 import {
   buildSearchInput,
@@ -51,7 +52,20 @@ async function main() {
     );
     process.exit(1);
   }
-  console.log(`[reddit:test] PASS — non-empty normalized posts`);
+
+  // Every url must pass the same check FindingSchema applies to source_url —
+  // relative permalinks here mean every finding dies in Zod validation.
+  const urlSchema = z.string().url();
+  const badUrls = posts
+    .flatMap((p) => [p.url, ...p.comments.map((c) => c.url)])
+    .filter((url) => !urlSchema.safeParse(url).success);
+  if (badUrls.length > 0) {
+    console.error(
+      `[reddit:test] FAILED — ${badUrls.length} normalized urls fail z.string().url(), e.g. ${badUrls[0]}`,
+    );
+    process.exit(1);
+  }
+  console.log(`[reddit:test] PASS — non-empty normalized posts, all urls absolute`);
 }
 
 main().catch((err) => {
