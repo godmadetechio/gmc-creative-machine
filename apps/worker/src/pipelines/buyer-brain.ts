@@ -10,6 +10,8 @@ import {
 } from "@gmc/shared";
 import { withValidationRetry, type AgentUsage } from "../agent";
 import { loadPrompt } from "../prompts";
+import { getRedditCredentials } from "../reddit";
+import { createRedditMcpServer, REDDIT_TOOL_NAMES } from "../reddit-tools";
 import type { PipelineHandler } from "./index";
 
 const MINERS = ["forum-miner", "reddit-miner", "news-miner", "youtube-miner"] as const;
@@ -87,16 +89,31 @@ export async function runBuyerBrain(
   };
 
   // ── 1. Four miners in parallel ─────────────────────────────────────────
+  // reddit-miner uses the official Reddit Data API via custom MCP tools
+  // (Reddit blocks all unauthenticated fetches); without credentials it is
+  // skipped (fulfilled null) rather than failing the run.
+  const redditCreds = getRedditCredentials();
   console.log(`[buyer_brain] mining (depth=${input.depth}, model per WORKER_MODEL)…`);
   const settled = await Promise.allSettled(
-    MINERS.map((name) =>
-      withValidationRetry(MinerOutputSchema, {
+    MINERS.map((name) => {
+      if (name === "reddit-miner") {
+        if (!redditCreds) return Promise.resolve(null);
+        return withValidationRetry(MinerOutputSchema, {
+          prompt: loadPrompt(name, minerVars),
+          tools: [],
+          mcpServers: { reddit: createRedditMcpServer(redditCreds) },
+          mcpTools: REDDIT_TOOL_NAMES,
+          maxTurns: depth.maxTurns,
+          label: name,
+        });
+      }
+      return withValidationRetry(MinerOutputSchema, {
         prompt: loadPrompt(name, minerVars),
         tools: ["WebSearch", "WebFetch"],
         maxTurns: depth.maxTurns,
         label: name,
-      }),
-    ),
+      });
+    }),
   );
 
   const warnings: string[] = [];
@@ -107,6 +124,14 @@ export async function runBuyerBrain(
     const outcome = settled[i];
     if (!outcome) continue;
     if (outcome.status === "fulfilled") {
+      if (outcome.value === null) {
+        findingCounts[name] = 0;
+        warnings.push(
+          `${name} skipped: REDDIT_CLIENT_ID / REDDIT_CLIENT_SECRET / REDDIT_USER_AGENT not set`,
+        );
+        console.warn(`[buyer_brain] ${name} skipped — Reddit credentials not set`);
+        continue;
+      }
       cost.add(name, outcome.value.costUsd, outcome.value.usage);
       findingsByMiner[name] = outcome.value.data.findings;
       findingCounts[name] = outcome.value.data.findings.length;
