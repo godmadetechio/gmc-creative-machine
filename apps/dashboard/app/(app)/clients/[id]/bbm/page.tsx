@@ -18,11 +18,13 @@ import {
 import { createClient } from "@/lib/supabase/server";
 import { VersionSelect } from "./version-select";
 
+// min-w-0 lets cards shrink inside the grid instead of overflowing when
+// content contains long unbroken strings (URLs, hashtags).
 const SECTION_STYLES = {
-  pains: "border-red-500/40",
-  desires: "border-emerald-500/40",
-  beliefs: "border-amber-500/40",
-  patterns: "border-blue-500/40",
+  pains: "min-w-0 border-red-500/40",
+  desires: "min-w-0 border-emerald-500/40",
+  beliefs: "min-w-0 border-amber-500/40",
+  patterns: "min-w-0 border-blue-500/40",
 } as const;
 
 function QuoteList({ quotes }: { quotes: VerbatimQuote[] }) {
@@ -34,7 +36,7 @@ function QuoteList({ quotes }: { quotes: VerbatimQuote[] }) {
             href={q.source_url}
             target="_blank"
             rel="noreferrer"
-            className="text-muted-foreground hover:text-foreground group block"
+            className="text-muted-foreground hover:text-foreground group block break-words"
           >
             <span className="italic">“{q.quote}”</span>{" "}
             <span className="inline-flex items-center gap-1 whitespace-nowrap text-xs opacity-70 group-hover:opacity-100">
@@ -195,7 +197,7 @@ function BbmSections({ bbm }: { bbm: BBM }) {
         {bbm.pains.map((pain, i) => (
           <Card key={i} className={SECTION_STYLES.pains}>
             <CardHeader>
-              <CardTitle className="text-base leading-snug">
+              <CardTitle className="text-base leading-snug break-words">
                 {pain.current}
               </CardTitle>
               <div className="flex flex-wrap gap-2 pt-1">
@@ -221,7 +223,7 @@ function BbmSections({ bbm }: { bbm: BBM }) {
         {bbm.desires.map((desire, i) => (
           <Card key={i} className={SECTION_STYLES.desires}>
             <CardHeader>
-              <CardTitle className="text-base leading-snug">
+              <CardTitle className="text-base leading-snug break-words">
                 {desire.current}
               </CardTitle>
               <div className="pt-1">
@@ -246,7 +248,7 @@ function BbmSections({ bbm }: { bbm: BBM }) {
         {bbm.beliefs.map((belief, i) => (
           <Card key={i} className={SECTION_STYLES.beliefs}>
             <CardHeader>
-              <CardTitle className="text-base leading-snug">
+              <CardTitle className="text-base leading-snug break-words">
                 {belief.belief}
               </CardTitle>
             </CardHeader>
@@ -272,7 +274,7 @@ function BbmSections({ bbm }: { bbm: BBM }) {
         {bbm.patterns.map((pattern, i) => (
           <Card key={i} className={SECTION_STYLES.patterns}>
             <CardHeader>
-              <CardTitle className="text-base leading-snug">
+              <CardTitle className="text-base leading-snug break-words">
                 {pattern.pattern}
               </CardTitle>
             </CardHeader>
@@ -291,7 +293,11 @@ function BbmSections({ bbm }: { bbm: BBM }) {
       <SectionHeading title="Language bank" count={bbm.language_bank.length} />
       <div className="mt-3 flex flex-wrap gap-2">
         {bbm.language_bank.map((phrase, i) => (
-          <Badge key={i} variant="secondary" className="text-sm font-normal">
+          <Badge
+            key={i}
+            variant="secondary"
+            className="text-sm font-normal whitespace-normal break-words text-left"
+          >
             “{phrase}”
           </Badge>
         ))}
