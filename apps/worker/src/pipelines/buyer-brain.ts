@@ -111,6 +111,12 @@ export async function runBuyerBrain(
       findingsByMiner[name] = outcome.value.data.findings;
       findingCounts[name] = outcome.value.data.findings.length;
       console.log(`[buyer_brain] ${name}: ${findingCounts[name]} findings`);
+      if (findingCounts[name] === 0) {
+        warnings.push(
+          `${name} returned 0 findings — check its prompt or source access`,
+        );
+        console.warn(`[buyer_brain] ${name} returned 0 findings`);
+      }
     } else {
       cost.addFromError(name, outcome.reason);
       findingCounts[name] = 0;
