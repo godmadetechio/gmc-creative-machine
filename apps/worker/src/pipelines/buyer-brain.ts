@@ -18,9 +18,21 @@ const MINERS = ["forum-miner", "reddit-miner", "news-miner", "youtube-miner"] as
 type MinerName = (typeof MINERS)[number];
 
 // depth 'quick' exists so prompt iteration doesn't cost 30 minutes per test.
+// reddit budgets are hard caps enforced in the tool server — the actor is
+// pay-per-result.
 const DEPTH_CONFIG = {
-  quick: { maxSearches: "3", minFindings: 5, maxTurns: 12, redditMaxItems: 20 },
-  full: { maxSearches: "12-15", minFindings: 20, maxTurns: 40, redditMaxItems: 100 },
+  quick: {
+    maxSearches: "3",
+    minFindings: 5,
+    maxTurns: 12,
+    reddit: { maxCalls: 2, maxPosts: 8, maxCommentsPerPost: 10 },
+  },
+  full: {
+    maxSearches: "12-15",
+    minFindings: 20,
+    maxTurns: 40,
+    reddit: { maxCalls: 5, maxPosts: 15, maxCommentsPerPost: 25 },
+  },
 } as const;
 
 export type BuyerBrainResult = {
@@ -99,12 +111,17 @@ export async function runBuyerBrain(
       if (name === "reddit-miner") {
         if (!apifyToken) return Promise.resolve(null);
         return withValidationRetry(MinerOutputSchema, {
-          prompt: loadPrompt(name, minerVars),
+          prompt: loadPrompt(name, {
+            ...minerVars,
+            max_tool_calls: depth.reddit.maxCalls,
+            max_posts: depth.reddit.maxPosts,
+            max_comments_per_post: depth.reddit.maxCommentsPerPost,
+          }),
           tools: [],
           mcpServers: {
             reddit: createRedditMcpServer({
               token: apifyToken,
-              maxItemsCap: depth.redditMaxItems,
+              ...depth.reddit,
             }),
           },
           mcpTools: REDDIT_TOOL_NAMES,
