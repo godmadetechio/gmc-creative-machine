@@ -15,10 +15,10 @@ Full architecture: see GODMADE_SYSTEM_BUILD_PLAN.md (read it before any work).
 2. **Create your single operator user**: Supabase dashboard → Authentication →
    Users → Add user (email + password, confirm email manually). There is no
    sign-up flow — this app is single-operator by design.
-3. **Configure env**: copy `.env.example` to `apps/dashboard/.env.local` and
-   fill in `NEXT_PUBLIC_SUPABASE_URL` + `NEXT_PUBLIC_SUPABASE_ANON_KEY`
-   (Project Settings → API). The worker reads `apps/worker/.env`
-   (`SUPABASE_URL` + `SUPABASE_SERVICE_ROLE_KEY`).
+3. **Configure env**: copy `.env.example` to `.env.local` at the repo root —
+   both apps load it. Fill in `NEXT_PUBLIC_SUPABASE_URL` +
+   `NEXT_PUBLIC_SUPABASE_ANON_KEY` (dashboard), `SUPABASE_URL` +
+   `SUPABASE_SERVICE_ROLE_KEY` (worker), and `ANTHROPIC_API_KEY` (pipelines).
 4. **Apply migrations**: install the [Supabase CLI](https://supabase.com/docs/guides/cli),
    then `supabase link --project-ref <your-ref>` and `pnpm db:migrate`.
 5. **Run**: `pnpm install`, then `pnpm dev` → http://localhost:3000, sign in,
@@ -37,4 +37,16 @@ Full architecture: see GODMADE_SYSTEM_BUILD_PLAN.md (read it before any work).
 - pnpm dev            — dashboard on :3000
 - pnpm worker:dev     — worker with hot reload
 - pnpm db:migrate     — apply Supabase migrations
-- pnpm pipeline:test  — run a pipeline against the fixture client with --depth quick (Phase 1)
+- pnpm pipeline:test  — run the Buyer Brain pipeline at depth quick against a
+  client by name (default "Ben's Fitness"): `pnpm pipeline:test "Client Name"`
+
+## Buyer Brain (Phase 1)
+
+Click **Run Buyer Brain** on a client page (dashboard) or use
+`pnpm pipeline:test`. The worker (`pnpm worker:dev`) picks up queued runs:
+four research miners (forum / reddit / news / youtube) run in parallel via the
+Claude Agent SDK with web search + fetch, a composer merges their findings
+into the Buyer Brain Matrix, and the result is written to `bbm_versions`
+(version incremented, previous active version deactivated). View it at
+`/clients/<id>/bbm` — every quote links to its source. Miner and composer
+prompts live in `apps/worker/prompts/*.md`; tune them there.

@@ -22,4 +22,5 @@ Full architecture: see GODMADE_SYSTEM_BUILD_PLAN.md (read it before any work).
 - pnpm dev            — dashboard on :3000
 - pnpm worker:dev     — worker with hot reload
 - pnpm db:migrate     — apply Supabase migrations
-- pnpm pipeline:test  — run a pipeline against the fixture client with --depth quick
+- pnpm pipeline:test  — run buyer_brain at depth quick against a client by name
+  (default "Ben's Fitness"): pnpm pipeline:test "Client Name"

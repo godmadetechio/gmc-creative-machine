@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Run, RunType } from "@gmc/shared";
+import { buyerBrainHandler } from "./buyer-brain";
 
 export type PipelineContext = {
   supabase: SupabaseClient;
@@ -8,7 +9,7 @@ export type PipelineContext = {
 
 export type PipelineHandler = (ctx: PipelineContext) => Promise<void>;
 
-// Placeholder until the real pipelines land (Buyer Brain in Phase 1).
+// Placeholder for pipelines from later phases.
 // Marks the run failed so a queued run never sits in 'running' forever.
 function notImplemented(phase: string): PipelineHandler {
   return async ({ supabase, run }) => {
@@ -26,7 +27,7 @@ function notImplemented(phase: string): PipelineHandler {
 }
 
 export const pipelines: Record<RunType, PipelineHandler> = {
-  buyer_brain: notImplemented("Phase 1"),
+  buyer_brain: buyerBrainHandler,
   creative_selection: notImplemented("Phase 2"),
   still_ads: notImplemented("Phase 3"),
   video_ads: notImplemented("Phase 4"),

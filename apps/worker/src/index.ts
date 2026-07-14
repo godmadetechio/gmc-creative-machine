@@ -1,4 +1,4 @@
-import "dotenv/config";
+import "./env";
 import { RunSchema } from "@gmc/shared";
 import { pipelines } from "./pipelines/index";
 import { createServiceClient } from "./supabase";
@@ -62,6 +62,8 @@ async function main() {
         console.log(`[worker] run ${run.id} finished`);
       } catch (err) {
         console.error(`[worker] run ${run.id} crashed:`, err);
+        // Pipelines attach costUsd to errors so spend on failed runs is kept.
+        const costUsd = (err as { costUsd?: number })?.costUsd;
         await supabase
           .from("runs")
           .update({
@@ -69,6 +71,7 @@ async function main() {
             output_json: {
               error: err instanceof Error ? err.message : String(err),
             },
+            cost_usd: typeof costUsd === "number" ? Number(costUsd.toFixed(4)) : null,
             finished_at: new Date().toISOString(),
           })
           .eq("id", run.id);

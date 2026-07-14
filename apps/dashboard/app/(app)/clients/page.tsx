@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { Plus, Pencil, ExternalLink } from "lucide-react";
 import { ClientSchema } from "@gmc/shared";
 import { Button } from "@/components/ui/button";
@@ -74,7 +75,12 @@ export default async function ClientsPage() {
                 {clients.map((client) => (
                   <TableRow key={client.id}>
                     <TableCell className="pl-4 font-medium">
-                      {client.name}
+                      <Link
+                        href={`/clients/${client.id}`}
+                        className="hover:underline"
+                      >
+                        {client.name}
+                      </Link>
                     </TableCell>
                     <TableCell className="text-muted-foreground max-w-56 truncate">
                       {client.niche ?? "—"}

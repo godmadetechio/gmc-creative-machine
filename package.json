@@ -5,6 +5,7 @@
     "dev": "pnpm --filter dashboard dev",
     "worker:dev": "pnpm --filter worker dev",
     "db:migrate": "supabase db push",
+    "pipeline:test": "pnpm --filter worker pipeline:test",
     "build": "pnpm -r build",
     "lint": "pnpm -r lint",
     "typecheck": "pnpm -r typecheck"
