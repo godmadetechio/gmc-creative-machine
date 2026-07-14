@@ -7,7 +7,7 @@ export function createServiceClient(): SupabaseClient {
 
   if (!url || !key) {
     throw new Error(
-      "Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY — copy .env.example to apps/worker/.env",
+      "Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY — copy .env.example to .env.local at the repo root",
     );
   }
 

@@ -1,6 +1,5 @@
 import { RunStatus, RunType } from "@gmc/shared";
 import { z } from "zod";
-import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import {
   Table,
@@ -10,7 +9,10 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { cn } from "@/lib/utils";
+import {
+  RUN_TYPE_LABELS,
+  RunStatusBadge,
+} from "@/components/run-status-badge";
 import { createClient } from "@/lib/supabase/server";
 
 const RunRowSchema = z.object({
@@ -23,29 +25,6 @@ const RunRowSchema = z.object({
   created_at: z.string(),
   clients: z.object({ name: z.string() }).nullable(),
 });
-
-const TYPE_LABELS: Record<RunType, string> = {
-  buyer_brain: "Buyer Brain",
-  creative_selection: "Creative Selection",
-  still_ads: "Still Ads",
-  video_ads: "Video Ads",
-};
-
-const STATUS_STYLES: Record<RunStatus, string> = {
-  queued: "bg-muted text-muted-foreground",
-  running: "bg-blue-500/15 text-blue-400",
-  needs_review: "bg-amber-500/15 text-amber-400",
-  approved: "bg-emerald-500/15 text-emerald-400",
-  failed: "bg-red-500/15 text-red-400",
-};
-
-const STATUS_LABELS: Record<RunStatus, string> = {
-  queued: "Queued",
-  running: "Running",
-  needs_review: "Needs review",
-  approved: "Approved",
-  failed: "Failed",
-};
 
 const dateTimeFormat = new Intl.DateTimeFormat("en-GB", {
   dateStyle: "medium",
@@ -106,14 +85,9 @@ export default async function RunsPage() {
                     <TableCell className="pl-4 font-medium">
                       {run.clients?.name ?? "—"}
                     </TableCell>
-                    <TableCell>{TYPE_LABELS[run.type]}</TableCell>
+                    <TableCell>{RUN_TYPE_LABELS[run.type]}</TableCell>
                     <TableCell>
-                      <Badge
-                        variant="secondary"
-                        className={cn(STATUS_STYLES[run.status])}
-                      >
-                        {STATUS_LABELS[run.status]}
-                      </Badge>
+                      <RunStatusBadge status={run.status} />
                     </TableCell>
                     <TableCell className="text-muted-foreground">
                       {run.cost_usd != null
