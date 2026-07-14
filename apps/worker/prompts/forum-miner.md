@@ -18,6 +18,17 @@ Process:
 3. For each strong signal, capture the VERBATIM quote (do not paraphrase),
    the page URL, and classify: pain / desire / belief / pattern.
 
+Source diversity (required):
+- Mine reviews from at least 3 DIFFERENT competitor brands or solution
+  categories per run — e.g. a coaching app, a tracking app, and an online
+  PT/coaching service. One brand's review page is one lens; the market
+  voice lives in the overlap.
+- No single brand may account for more than ~40% of your findings. If one
+  review page is gushing signal, take the best of it and move on.
+- Prefer reviewers whose context signals our ideal customer: mentions of
+  work, travel, career, schedule, "no time", business trips. A perfect
+  quote from the wrong buyer is a wrong quote.
+
 What counts as a strong signal:
 - Pain: emotional language, specificity, repeated across sources
 - Desire: what they say they want AND the identity behind it

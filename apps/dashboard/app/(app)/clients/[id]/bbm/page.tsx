@@ -18,14 +18,18 @@ import {
 import { createClient } from "@/lib/supabase/server";
 import { VersionSelect } from "./version-select";
 
-// min-w-0 lets cards shrink inside the grid instead of overflowing when
-// content contains long unbroken strings (URLs, hashtags).
+// Grid/flex items default to min-width:auto and won't shrink below their
+// content — min-w-0 lifts that on the cards (grid children) and
+// overflow-hidden backstops anything that still won't wrap. CardTitle needs
+// its own min-w-0 too: CardHeader is a grid, so the title is a grid item.
 const SECTION_STYLES = {
-  pains: "min-w-0 border-red-500/40",
-  desires: "min-w-0 border-emerald-500/40",
-  beliefs: "min-w-0 border-amber-500/40",
-  patterns: "min-w-0 border-blue-500/40",
+  pains: "min-w-0 overflow-hidden border-red-500/40",
+  desires: "min-w-0 overflow-hidden border-emerald-500/40",
+  beliefs: "min-w-0 overflow-hidden border-amber-500/40",
+  patterns: "min-w-0 overflow-hidden border-blue-500/40",
 } as const;
+
+const CARD_TITLE_CLASSES = "min-w-0 text-base leading-snug break-words";
 
 function QuoteList({ quotes }: { quotes: VerbatimQuote[] }) {
   return (
@@ -197,12 +201,15 @@ function BbmSections({ bbm }: { bbm: BBM }) {
         {bbm.pains.map((pain, i) => (
           <Card key={i} className={SECTION_STYLES.pains}>
             <CardHeader>
-              <CardTitle className="text-base leading-snug break-words">
+              <CardTitle className={CARD_TITLE_CLASSES}>
                 {pain.current}
               </CardTitle>
-              <div className="flex flex-wrap gap-2 pt-1">
+              <div className="flex min-w-0 flex-wrap gap-2 pt-1">
                 <IntensityBadge value={pain.intensity} />
-                <Badge variant="secondary" className="bg-muted text-muted-foreground">
+                <Badge
+                  variant="secondary"
+                  className="bg-muted text-muted-foreground whitespace-normal break-words text-left"
+                >
                   {pain.frequency}
                 </Badge>
               </div>
@@ -223,7 +230,7 @@ function BbmSections({ bbm }: { bbm: BBM }) {
         {bbm.desires.map((desire, i) => (
           <Card key={i} className={SECTION_STYLES.desires}>
             <CardHeader>
-              <CardTitle className="text-base leading-snug break-words">
+              <CardTitle className={CARD_TITLE_CLASSES}>
                 {desire.current}
               </CardTitle>
               <div className="pt-1">
@@ -248,7 +255,7 @@ function BbmSections({ bbm }: { bbm: BBM }) {
         {bbm.beliefs.map((belief, i) => (
           <Card key={i} className={SECTION_STYLES.beliefs}>
             <CardHeader>
-              <CardTitle className="text-base leading-snug break-words">
+              <CardTitle className={CARD_TITLE_CLASSES}>
                 {belief.belief}
               </CardTitle>
             </CardHeader>
@@ -274,7 +281,7 @@ function BbmSections({ bbm }: { bbm: BBM }) {
         {bbm.patterns.map((pattern, i) => (
           <Card key={i} className={SECTION_STYLES.patterns}>
             <CardHeader>
-              <CardTitle className="text-base leading-snug break-words">
+              <CardTitle className={CARD_TITLE_CLASSES}>
                 {pattern.pattern}
               </CardTitle>
             </CardHeader>
