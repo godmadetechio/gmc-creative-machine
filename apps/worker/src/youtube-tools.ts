@@ -82,12 +82,15 @@ export type YoutubeToolsConfig = {
   /** One tool call = one video; hard budget (pay-per-result actor). */
   maxVideos: number;
   maxCommentsPerVideo: number;
+  /** Surfaces tool-level problems into the run's output_json.warnings. */
+  onWarning?: (message: string) => void;
 };
 
 export function createYoutubeMcpServer({
   token,
   maxVideos,
   maxCommentsPerVideo,
+  onWarning,
 }: YoutubeToolsConfig): McpSdkServerConfigWithInstance {
   let videosUsed = 0;
 
@@ -129,12 +132,24 @@ export function createYoutubeMcpServer({
               },
               { token },
             );
+            const comments = normalizeComments(items, { videoUrl, maxComments: limit });
+            console.log(
+              `[youtube_comments] ${items.length} raw items → ${comments.length} comments (${videoUrl})`,
+            );
+            if (items.length > 0 && comments.length === 0) {
+              const message = `youtube_comments normalized 0 comments from ${items.length} raw items — field mapping mismatch; sample raw item: ${truncate(JSON.stringify(items[0]), 600)}`;
+              console.warn(`[youtube_comments] ${message}`);
+              onWarning?.(message);
+            }
             return asToolResult({
-              comments: normalizeComments(items, { videoUrl, maxComments: limit }),
+              comments,
               videos_remaining: maxVideos - videosUsed,
             });
           } catch (err) {
-            return asToolError(err instanceof Error ? err.message : String(err));
+            const message = err instanceof Error ? err.message : String(err);
+            console.warn(`[youtube_comments] call failed: ${message}`);
+            onWarning?.(`youtube_comments call failed: ${message}`);
+            return asToolError(message);
           }
         },
       ),
