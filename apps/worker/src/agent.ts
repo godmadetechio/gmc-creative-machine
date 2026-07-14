@@ -1,4 +1,4 @@
-import { query } from "@anthropic-ai/claude-agent-sdk";
+import { query, type McpServerConfig } from "@anthropic-ai/claude-agent-sdk";
 import type { z } from "zod";
 import { zodToJsonSchema } from "zod-to-json-schema";
 
@@ -27,6 +27,10 @@ type RunQueryOptions = {
   prompt: string;
   /** Built-in tools the agent may use; [] for a pure-reasoning pass. */
   tools: string[];
+  /** In-process MCP servers (e.g. the reddit Data API tools). */
+  mcpServers?: Record<string, McpServerConfig>;
+  /** MCP tool names (mcp__<server>__<tool>) to auto-allow. */
+  mcpTools?: string[];
   maxTurns: number;
   label: string;
 };
@@ -36,7 +40,7 @@ type RunQueryOptions = {
 // real types + our refinements (url format, 1-5 ranges, min lengths).
 export async function runStructuredQuery<S extends z.ZodTypeAny>(
   schema: S,
-  { prompt, tools, maxTurns, label }: RunQueryOptions,
+  { prompt, tools, mcpServers, mcpTools, maxTurns, label }: RunQueryOptions,
 ): Promise<AgentQueryResult<z.infer<S>>> {
   let result;
   for await (const message of query({
@@ -44,7 +48,8 @@ export async function runStructuredQuery<S extends z.ZodTypeAny>(
     options: {
       model: WORKER_MODEL,
       tools,
-      allowedTools: tools,
+      allowedTools: [...tools, ...(mcpTools ?? [])],
+      mcpServers,
       maxTurns,
       outputFormat: {
         type: "json_schema",

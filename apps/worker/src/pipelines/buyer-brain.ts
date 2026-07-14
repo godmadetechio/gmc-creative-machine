@@ -9,16 +9,30 @@ import {
   type Finding,
 } from "@gmc/shared";
 import { withValidationRetry, type AgentUsage } from "../agent";
+import { getApifyToken } from "../apify";
 import { loadPrompt } from "../prompts";
+import { createRedditMcpServer, REDDIT_TOOL_NAMES } from "../reddit-tools";
 import type { PipelineHandler } from "./index";
 
 const MINERS = ["forum-miner", "reddit-miner", "news-miner", "youtube-miner"] as const;
 type MinerName = (typeof MINERS)[number];
 
 // depth 'quick' exists so prompt iteration doesn't cost 30 minutes per test.
+// reddit budgets are hard caps enforced in the tool server — the actor is
+// pay-per-result.
 const DEPTH_CONFIG = {
-  quick: { maxSearches: "3", minFindings: 5, maxTurns: 12 },
-  full: { maxSearches: "12-15", minFindings: 20, maxTurns: 40 },
+  quick: {
+    maxSearches: "3",
+    minFindings: 5,
+    maxTurns: 12,
+    reddit: { maxCalls: 2, maxPosts: 8, maxCommentsPerPost: 10 },
+  },
+  full: {
+    maxSearches: "12-15",
+    minFindings: 20,
+    maxTurns: 40,
+    reddit: { maxCalls: 5, maxPosts: 15, maxCommentsPerPost: 25 },
+  },
 } as const;
 
 export type BuyerBrainResult = {
@@ -87,16 +101,41 @@ export async function runBuyerBrain(
   };
 
   // ── 1. Four miners in parallel ─────────────────────────────────────────
+  // reddit-miner goes through an Apify actor exposed as custom MCP tools
+  // (Reddit blocks all unauthenticated fetches); without APIFY_TOKEN it is
+  // skipped (fulfilled null) rather than failing the run.
+  const apifyToken = getApifyToken();
   console.log(`[buyer_brain] mining (depth=${input.depth}, model per WORKER_MODEL)…`);
   const settled = await Promise.allSettled(
-    MINERS.map((name) =>
-      withValidationRetry(MinerOutputSchema, {
+    MINERS.map((name) => {
+      if (name === "reddit-miner") {
+        if (!apifyToken) return Promise.resolve(null);
+        return withValidationRetry(MinerOutputSchema, {
+          prompt: loadPrompt(name, {
+            ...minerVars,
+            max_tool_calls: depth.reddit.maxCalls,
+            max_posts: depth.reddit.maxPosts,
+            max_comments_per_post: depth.reddit.maxCommentsPerPost,
+          }),
+          tools: [],
+          mcpServers: {
+            reddit: createRedditMcpServer({
+              token: apifyToken,
+              ...depth.reddit,
+            }),
+          },
+          mcpTools: REDDIT_TOOL_NAMES,
+          maxTurns: depth.maxTurns,
+          label: name,
+        });
+      }
+      return withValidationRetry(MinerOutputSchema, {
         prompt: loadPrompt(name, minerVars),
         tools: ["WebSearch", "WebFetch"],
         maxTurns: depth.maxTurns,
         label: name,
-      }),
-    ),
+      });
+    }),
   );
 
   const warnings: string[] = [];
@@ -107,6 +146,12 @@ export async function runBuyerBrain(
     const outcome = settled[i];
     if (!outcome) continue;
     if (outcome.status === "fulfilled") {
+      if (outcome.value === null) {
+        findingCounts[name] = 0;
+        warnings.push(`${name} skipped: APIFY_TOKEN not set`);
+        console.warn(`[buyer_brain] ${name} skipped — APIFY_TOKEN not set`);
+        continue;
+      }
       cost.add(name, outcome.value.costUsd, outcome.value.usage);
       findingsByMiner[name] = outcome.value.data.findings;
       findingCounts[name] = outcome.value.data.findings.length;
