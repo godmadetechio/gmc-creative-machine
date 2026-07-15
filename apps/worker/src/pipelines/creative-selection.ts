@@ -173,7 +173,7 @@ export async function runCreativeSelection(
     urls.map((url) =>
       callActor<Record<string, unknown>>(
         FB_ADS_ACTOR_ID,
-        buildActorInput(url, { perUrlCount: PER_URL_CAP }),
+        buildActorInput(url, { perUrlCount: PER_URL_CAP, country: input.country }),
         { token: apifyToken },
       ),
     ),

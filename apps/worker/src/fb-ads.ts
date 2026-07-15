@@ -2,11 +2,12 @@
 // on Apify. The actor takes Ad Library URLs (keyword searches or facebook
 // page URLs), not raw keywords — the pipeline builds the URLs.
 //
-// The input shape below is the actor's documented schema; run
-// `pnpm --filter worker fbads:test` against a real APIFY_TOKEN to print the
-// live input schema and a raw sample item (this sandbox cannot reach
-// api.apify.com). buildActorInput/normalizeAds are the only places to touch
-// if the live schema differs.
+// Input shape verified against the live actor schema via
+// `pnpm --filter worker fbads:test`. Real fields: urls (required),
+// scrapeAdDetails, limitPerSource (per-URL cap), count (total cap),
+// scrapePageAds.{period,activeStatus,sortBy,countryCode}, runTag, proxy.
+// buildActorInput/normalizeAds are the only places to touch if the actor's
+// schema changes — re-run fbads:test to compare.
 
 export const FB_ADS_ACTOR_ID = "XtaWFhbtfxyzqrFmd";
 
@@ -22,13 +23,19 @@ export function buildAdLibrarySearchUrl(query: string, country: string): string 
 }
 
 // One actor call per URL keeps result attribution per target and lets a
-// single bad URL fail without sinking the batch.
-export function buildActorInput(url: string, { perUrlCount }: { perUrlCount: number }) {
+// single bad URL fail without sinking the batch. With a single URL per call
+// the per-source and total caps coincide.
+export function buildActorInput(
+  url: string,
+  { perUrlCount, country }: { perUrlCount: number; country?: string },
+) {
   return {
     urls: [{ url }],
+    limitPerSource: perUrlCount,
     count: perUrlCount,
     "scrapePageAds.activeStatus": "active",
-    period: "",
+    // belt-and-suspenders alongside the country baked into the search URL
+    ...(country ? { "scrapePageAds.countryCode": country } : {}),
   };
 }
 
