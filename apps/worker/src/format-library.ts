@@ -65,8 +65,9 @@ export function parseStaticFrameworks(md: string): SeedFormat[] {
 
 // Seeds format_library from static-frameworks.md when the table is empty,
 // so scan #1 enriches known formats rather than inventing the library.
-// Returns the number of rows inserted (0 = already seeded). Idempotent:
-// the unique index on lower(name) rejects duplicates even under a race.
+// Returns the number of rows inserted (0 = already seeded). Idempotent
+// under a race: the loser's insert hits the unique index on lower(name)
+// (23505) and is treated as already-seeded.
 export async function seedLibraryIfEmpty(
   supabase: SupabaseClient,
 ): Promise<number> {
@@ -91,6 +92,10 @@ export async function seedLibraryIfEmpty(
     })),
   );
   if (error) {
+    // 23505 = unique_violation: a concurrent caller seeded first. The
+    // multi-row insert is one statement, so it rolled back wholly and the
+    // winner's rows are intact.
+    if (error.code === "23505") return 0;
     throw new Error(`format_library seed failed: ${error.message}`);
   }
   return seeds.length;

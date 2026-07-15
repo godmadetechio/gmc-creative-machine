@@ -83,8 +83,9 @@ export default async function RunsPage() {
                 {runs.map((run) => (
                   <TableRow key={run.id}>
                     <TableCell className="pl-4 font-medium">
-                      {/* null client = a global run (e.g. format_scan) */}
-                      {run.clients?.name ?? "Global"}
+                      {/* only global run types legitimately have no client */}
+                      {run.clients?.name ??
+                        (run.type === "format_scan" ? "Global" : "—")}
                     </TableCell>
                     <TableCell>{RUN_TYPE_LABELS[run.type]}</TableCell>
                     <TableCell>

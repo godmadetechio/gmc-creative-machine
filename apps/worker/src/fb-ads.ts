@@ -287,12 +287,12 @@ function copyKey(ad: NormalizedAd): string | null {
 // content breaks ties). sumCounts accumulates duplicate_count for true
 // variant groups; it is off for exact ad-id repeats (same ad scraped via
 // two targets is one ad, not two variants).
-function collapse(
-  ads: NormalizedAd[],
-  keyFn: (ad: NormalizedAd) => string | null,
+function collapse<T extends NormalizedAd>(
+  ads: T[],
+  keyFn: (ad: T) => string | null,
   { sumCounts }: { sumCounts: boolean },
-): NormalizedAd[] {
-  const out: NormalizedAd[] = [];
+): T[] {
+  const out: T[] = [];
   const indexByKey = new Map<string, number>();
   for (const ad of ads) {
     const key = keyFn(ad);
@@ -327,7 +327,9 @@ function collapse(
 // — exact ad id, then Facebook's own collation_id grouping, then a
 // normalized-copy fallback for variants that dodge both. Survivors carry
 // duplicate_count (variants = advertiser conviction in that creative).
-export function dedupeAds(ads: NormalizedAd[]): NormalizedAd[] {
+// Generic so callers that tag ads with extra fields (e.g. format-scan's
+// vertical) keep the tags on survivors.
+export function dedupeAds<T extends NormalizedAd>(ads: T[]): T[] {
   const byId = collapse(ads, (ad) => ad.ad_id || ad.ad_url, { sumCounts: false });
   const byCollation = collapse(
     byId,

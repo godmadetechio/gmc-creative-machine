@@ -10,6 +10,12 @@ alter type run_type add value if not exists 'format_scan';
 
 alter table runs alter column client_id drop not null;
 
+-- Client-scoped run types still require a client — only global run types
+-- may be client-less. type::text (not a run_type literal) because using a
+-- just-added enum value in the same transaction raises 55P04.
+alter table runs add constraint runs_client_required
+  check (client_id is not null or type::text = 'format_scan');
+
 create type format_status as enum ('active', 'fading', 'archived');
 create type seed_vertical as enum ('dtc', 'saas', 'coaching', 'info', 'other');
 create type seed_advertiser_status as enum ('active', 'inactive');

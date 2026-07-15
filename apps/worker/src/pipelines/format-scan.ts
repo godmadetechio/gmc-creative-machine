@@ -47,9 +47,13 @@ const FADE_AFTER_MISSED = 2;
 // The fading pass only runs when at least this share of advertisers
 // scraped successfully — an Apify outage must not fade the library.
 const MIN_HEALTHY_ADVERTISER_SHARE = 0.5;
+// Concurrent Apify actor runs per batch (plan concurrency limits).
+const SCRAPE_CONCURRENCY = 15;
 
 export type FormatScanResult = {
   costUsd: number;
+  formatsConfirmed: number;
+  newFormats: string[];
   warnings: string[];
   output: Record<string, unknown>;
 };
@@ -160,44 +164,53 @@ export async function runFormatScan(
   }
 
   // ── 2. Scrape each advertiser's page (pay-per-result actor) ─────────────
+  // Chunked so a full 50-advertiser scan doesn't fire 50 simultaneous actor
+  // runs into an Apify plan's concurrency limit.
   console.log(
     `[format_scan] scraping ${advertisers.length} seed advertisers (limit ${input.limit_per_advertiser} each, country ${input.country})…`,
   );
-  const scrapeResults = await Promise.allSettled(
-    advertisers.map((advertiser) =>
-      callActor<Record<string, unknown>>(
-        FB_ADS_ACTOR_ID,
-        buildActorInput(advertiser.fb_page_url, {
-          perUrlCount: input.limit_per_advertiser,
-          country: input.country,
-        }),
-        { token: apifyToken },
-      ),
-    ),
-  );
+  const scrapeResults: PromiseSettledResult<Record<string, unknown>[]>[] = [];
+  for (let i = 0; i < advertisers.length; i += SCRAPE_CONCURRENCY) {
+    const chunk = advertisers.slice(i, i + SCRAPE_CONCURRENCY);
+    scrapeResults.push(
+      ...(await Promise.allSettled(
+        chunk.map((advertiser) =>
+          callActor<Record<string, unknown>>(
+            FB_ADS_ACTOR_ID,
+            buildActorInput(advertiser.fb_page_url, {
+              perUrlCount: input.limit_per_advertiser,
+              country: input.country,
+            }),
+            { token: apifyToken },
+          ),
+        ),
+      )),
+    );
+  }
 
   const perAdvertiserCounts: Record<string, number | null> = {};
   const allAds: TaggedAd[] = [];
   let successfulAdvertisers = 0;
   for (const [i, outcome] of scrapeResults.entries()) {
     const advertiser = advertisers[i]!;
-    const label = `advertiser:${advertiser.name}`;
     if (outcome.status === "fulfilled") {
       successfulAdvertisers += 1;
       const normalized = normalizeAds(outcome.value, {
-        label,
+        // "page_url:" prefix — normalizeAds keys its zero-result diagnosis
+        // ("page is not running ads" vs "no results for query") off it.
+        label: `page_url:${advertiser.name}`,
         onWarning: (message) => warnings.push(message),
       });
-      perAdvertiserCounts[label] = normalized.length;
+      perAdvertiserCounts[advertiser.name] = normalized.length;
       console.log(
-        `[format_scan] ${label} (${advertiser.vertical}): ${outcome.value.length} raw → ${normalized.length} normalized`,
+        `[format_scan] ${advertiser.name} (${advertiser.vertical}): ${outcome.value.length} raw → ${normalized.length} normalized`,
       );
       allAds.push(
         ...normalized.map((ad) => ({ ...ad, vertical: advertiser.vertical })),
       );
     } else {
-      perAdvertiserCounts[label] = null;
-      const message = `scrape failed for ${label}: ${
+      perAdvertiserCounts[advertiser.name] = null;
+      const message = `scrape failed for ${advertiser.name}: ${
         outcome.reason instanceof Error ? outcome.reason.message : outcome.reason
       }`;
       warnings.push(message);
@@ -218,14 +231,8 @@ export async function runFormatScan(
   }
 
   // ── 3. Dedupe globally, then build per-vertical corpora ─────────────────
-  // dedupeAds is typed on NormalizedAd; verticals are re-attached from the
-  // pre-dedupe ads by ad_id (collapse keeps a surviving original's id).
-  const verticalById = new Map<string, SeedVertical>();
-  for (const ad of allAds) verticalById.set(ad.ad_id, ad.vertical);
-  const deduped: TaggedAd[] = dedupeAds(allAds).map((ad) => ({
-    ...ad,
-    vertical: verticalById.get(ad.ad_id) ?? (ad as TaggedAd).vertical,
-  }));
+  // dedupeAds is generic: survivors keep their own vertical tag.
+  const deduped = dedupeAds(allAds);
 
   const byVertical = new Map<SeedVertical, TaggedAd[]>();
   for (const ad of deduped) {
@@ -345,7 +352,20 @@ export async function runFormatScan(
 
     // 4a. Confirmations → freshness + examples + vertical coverage.
     // New formats whose name already exists become confirmations too.
-    const confirmations = [...extraction.data.confirmations];
+    // Coalesced by format_id: the agent may repeat an id (or the collision
+    // branch may re-add one), and two updates for the same row would merge
+    // against the same stale snapshot — the second clobbering the first.
+    const exampleIdsByFormat = new Map<string, string[]>();
+    const addConfirmation = (formatId: string, exampleAdIds: string[]) => {
+      const ids = exampleIdsByFormat.get(formatId) ?? [];
+      for (const id of exampleAdIds) {
+        if (!ids.includes(id)) ids.push(id);
+      }
+      exampleIdsByFormat.set(formatId, ids);
+    };
+    for (const confirmation of extraction.data.confirmations) {
+      addConfirmation(confirmation.format_id, confirmation.example_ad_ids);
+    }
     const genuinelyNew = [];
     for (const proposed of extraction.data.new_formats) {
       const existing = libraryByName.get(proposed.name.trim().toLowerCase());
@@ -353,26 +373,23 @@ export async function runFormatScan(
         warnings.push(
           `${label} proposed "${proposed.name}" as new but it already exists — treated as a confirmation`,
         );
-        confirmations.push({
-          format_id: existing.id,
-          example_ad_ids: proposed.example_ad_ids.slice(0, 3),
-        });
+        addConfirmation(existing.id, proposed.example_ad_ids.slice(0, 3));
       } else {
         genuinelyNew.push(proposed);
       }
     }
 
     let confirmedCount = 0;
-    for (const confirmation of confirmations) {
-      const entry = libraryById.get(confirmation.format_id);
+    for (const [formatId, exampleAdIds] of exampleIdsByFormat) {
+      const entry = libraryById.get(formatId);
       if (!entry) {
         warnings.push(
-          `${label} returned unknown format_id "${confirmation.format_id}" — ignored`,
+          `${label} returned unknown format_id "${formatId}" — ignored`,
         );
         continue;
       }
       const examples = resolveExamples(
-        confirmation.example_ad_ids,
+        exampleAdIds,
         `confirmation of "${entry.name}"`,
       );
       const verticalsSeen = entry.verticals_seen.includes(vertical)
@@ -440,15 +457,21 @@ export async function runFormatScan(
   // ── 5. Fading pass ───────────────────────────────────────────────────────
   // Only on a full, healthy scan: a vertical-restricted smoke test or a
   // mostly-failed scrape says nothing about formats it never looked for.
+  // A vertical whose advertisers all failed or returned zero ads was never
+  // looked at either — its formats must not be penalized.
+  const emptyVerticals = [
+    ...new Set(advertisers.map((a) => a.vertical)),
+  ].filter((v) => (corpusByVertical.get(v)?.length ?? 0) === 0);
   const healthy =
     successfulAdvertisers / advertisers.length >= MIN_HEALTHY_ADVERTISER_SHARE &&
-    failedVerticals.length === 0;
+    failedVerticals.length === 0 &&
+    emptyVerticals.length === 0;
   const fadedNames: string[] = [];
   if (input.vertical) {
     console.log("[format_scan] vertical-restricted scan — fading pass skipped");
   } else if (!healthy) {
     warnings.push(
-      `fading pass skipped: unhealthy scan (${successfulAdvertisers}/${advertisers.length} advertisers scraped, ${failedVerticals.length} extractor failure(s))`,
+      `fading pass skipped: unhealthy scan (${successfulAdvertisers}/${advertisers.length} advertisers scraped, ${failedVerticals.length} extractor failure(s), ${emptyVerticals.length} vertical(s) with no ads)`,
     );
   } else {
     const { data: unseenRows, error: unseenError } = await supabase
@@ -460,7 +483,11 @@ export async function runFormatScan(
     } else {
       const unseen = (unseenRows ?? [])
         .map((row) => FormatLibraryEntrySchema.parse(row))
-        .filter((f) => !confirmedThisScan.has(f.id));
+        // Never-confirmed entries (the seeds) are exempt: several seeded
+        // formats are purely visual and the copy-only extractor cannot
+        // confirm them — a scan that cannot see a format is not evidence
+        // of its death. Fading tracks decay of once-confirmed formats.
+        .filter((f) => !confirmedThisScan.has(f.id) && f.last_confirmed !== null);
       for (const entry of unseen) {
         const missed = entry.scans_missed + 1;
         const fades = missed >= FADE_AFTER_MISSED;
@@ -485,6 +512,8 @@ export async function runFormatScan(
 
   return {
     costUsd: Number(cost.total.toFixed(4)),
+    formatsConfirmed: confirmedThisScan.size,
+    newFormats: newFormatNames,
     warnings,
     output: {
       seeded_formats: seededFormats,
@@ -535,6 +564,6 @@ export const formatScanHandler: PipelineHandler = async ({ supabase, run }) => {
   }
 
   console.log(
-    `[format_scan] done — ${result.output.formats_confirmed} formats confirmed, ${(result.output.new_formats as string[]).length} new, cost $${result.costUsd}`,
+    `[format_scan] done — ${result.formatsConfirmed} formats confirmed, ${result.newFormats.length} new, cost $${result.costUsd}`,
   );
 };
