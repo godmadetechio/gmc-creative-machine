@@ -26,6 +26,11 @@ export function buildAdLibrarySearchUrl(query: string, country: string): string 
   return `https://www.facebook.com/ads/library/?${params.toString()}`;
 }
 
+// The actor rejects runs with "Maximum charged results" below 10 — counts
+// under it are clamped up, not passed through (a live --limit=5 smoke test
+// failed on this).
+export const ACTOR_MIN_CHARGED_RESULTS = 10;
+
 // One actor call per URL keeps result attribution per target and lets a
 // single bad URL fail without sinking the batch. With a single URL per call
 // the per-source and total caps coincide.
@@ -33,10 +38,11 @@ export function buildActorInput(
   url: string,
   { perUrlCount, country }: { perUrlCount: number; country?: string },
 ) {
+  const count = Math.max(perUrlCount, ACTOR_MIN_CHARGED_RESULTS);
   return {
     urls: [{ url }],
-    limitPerSource: perUrlCount,
-    count: perUrlCount,
+    limitPerSource: count,
+    count,
     "scrapePageAds.activeStatus": "active",
     // belt-and-suspenders alongside the country baked into the search URL
     ...(country ? { "scrapePageAds.countryCode": country } : {}),
@@ -239,6 +245,19 @@ export function adErrorCode(item: RawItem): string | null {
   return code || null;
 }
 
+const NO_ADS_CODE = "ADS_NOT_FOUND";
+
+// Only the specific "source has no ads" shapes count as expected: the
+// ADS_NOT_FOUND code, or a bare pageInfo status row without an error code.
+// Any other actor error (input validation, billing limits, …) must surface
+// verbatim — a live "Maximum charged results >= 10" rejection was once
+// mislabeled as "page is not running ads".
+export function isNoAdsStatus(item: RawItem): boolean {
+  const code = adErrorCode(item);
+  if (code === NO_ADS_CODE) return true;
+  return code === null && "pageInfo" in item;
+}
+
 // Same convention as reddit-tools (the "reddit fix"): count what came in vs
 // what survived. Status items get an accurate "no ads" info warning; only a
 // genuine everything-lost-to-field-mapping case gets the mismatch warning
@@ -247,8 +266,12 @@ export function normalizeAds(
   items: RawItem[],
   { label, onWarning }: { label: string; onWarning?: (message: string) => void },
 ): NormalizedAd[] {
-  const statusItems = items.filter((item) => adErrorCode(item) !== null);
-  const adItems = items.filter((item) => adErrorCode(item) === null);
+  const isStatus = (item: RawItem) =>
+    adErrorCode(item) !== null || "pageInfo" in item;
+  const statusItems = items.filter(isStatus);
+  const adItems = items.filter((item) => !isStatus(item));
+  const noAdsItems = statusItems.filter(isNoAdsStatus);
+  const actorErrors = statusItems.filter((item) => !isNoAdsStatus(item));
   const normalized = adItems
     .map((item) => normalizeAd(item))
     .filter((ad): ad is NormalizedAd => ad !== null);
@@ -257,11 +280,19 @@ export function normalizeAds(
       statusItems.length > 0 ? ` (${statusItems.length} status items)` : ""
     }`,
   );
-  if (normalized.length === 0 && statusItems.length > 0) {
+  // Real actor errors surface verbatim, whatever else the batch contained.
+  for (const item of actorErrors) {
+    const message = `fb_ads ${label}: actor error — ${truncate(JSON.stringify(item), 300)}`;
+    console.warn(`[fb_ads] ${message}`);
+    onWarning?.(message);
+  }
+  if (normalized.length === 0 && noAdsItems.length > 0 && actorErrors.length === 0) {
     const what = label.startsWith("page_url")
       ? "page is not running ads"
       : "no results for query";
-    const message = `fb_ads ${label}: no ads returned (actor reported ${adErrorCode(statusItems[0]!)}) — ${what}`;
+    const message = `fb_ads ${label}: no ads returned (actor reported ${
+      adErrorCode(noAdsItems[0]!) ?? "a page status row with no ads"
+    }) — ${what}`;
     console.log(`[fb_ads] ${message}`);
     onWarning?.(message);
   } else if (adItems.length > 0 && normalized.length === 0) {
