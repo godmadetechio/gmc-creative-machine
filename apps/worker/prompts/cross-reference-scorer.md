@@ -9,7 +9,17 @@ metadata, days_running — you see the copy and metadata, not the imagery
 itself):
 {{ads_json}}
 
-Score EVERY ad 0-100:
+AUDIENCE GATE — apply before the rubric: is this ad's buyer our client's
+ICP? Ads selling TO practitioners in the niche instead of its consumers —
+certifications, "get more coaching clients" / "scale your studio" B2B
+offers, tools for professionals — are audience mismatches and score UNDER
+10 regardless of copy quality, and so does any ad whose buyer is obviously
+not our client's ICP (wrong problem, wrong market). Say so in
+match_rationale and set angle_match.pain_or_desire to "none". Keyword
+search brings this junk in; the gate is what keeps it out of the review
+queue.
+
+For ads that pass the gate, score 0-100:
 - Angle match (40): which BBM pain/desire does the hook target, and how
   directly? Name the specific matrix entry.
 - Belief work (30): does it break a belief listed in the BBM? Via which

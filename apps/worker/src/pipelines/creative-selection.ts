@@ -37,9 +37,10 @@ const SCORE_BATCH_SIZE = 8;
 const MIN_TARGETS = 5;
 const MAX_TARGETS = 10;
 const MAX_NEW_COMPETITORS = 8;
-// Per-advertiser pulls are the backbone of the run, but keyword targets are
-// how new competitors get discovered — leave room for both under MAX_TARGETS.
-const MAX_COMPETITOR_PAGE_TARGETS = 5;
+// Per-advertiser pulls are the PRIMARY source (keyword search is noisy),
+// but keyword targets are how new competitors get discovered — leave a few
+// slots for them under MAX_TARGETS.
+const MAX_COMPETITOR_PAGE_TARGETS = 6;
 const MIN_COMPETITOR_CONFIDENCE = 3;
 // "ad longevity is the filter" — ads running 30+ days are likely winners.
 const PREFERRED_MIN_DAYS_RUNNING = 30;
