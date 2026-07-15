@@ -22,6 +22,7 @@ import {
   buildActorInput,
   buildAdLibrarySearchUrl,
   dedupeAds,
+  formatHint,
   normalizeAds,
   type NormalizedAd,
 } from "../fb-ads";
@@ -67,9 +68,11 @@ function scorerAdPayload(ad: NormalizedAd) {
     ad_id: ad.ad_id,
     advertiser: ad.advertiser,
     ad_copy: ad.ad_copy || "(no ad copy captured)",
-    media: `${ad.media_urls.length} media url(s)`,
+    format_hint: formatHint(ad),
+    media_count: ad.media_urls.length,
     platforms: ad.platforms,
     days_running: ad.days_running,
+    variant_count: ad.duplicate_count,
   };
 }
 
@@ -512,7 +515,9 @@ export async function runCreativeSelection(
         ad_copy: ad.ad_copy || null,
         run_time_days: ad.days_running,
         match_score: score.score,
-        match_rationale_json: score,
+        // duplicate_count rides along with the scorer output: variants are
+        // a conviction signal the reviewer should see.
+        match_rationale_json: { ...score, duplicate_count: ad.duplicate_count },
         status: "candidate",
       })),
     )

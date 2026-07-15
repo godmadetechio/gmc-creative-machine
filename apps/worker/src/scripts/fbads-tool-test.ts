@@ -109,8 +109,9 @@ async function main() {
     }),
   );
   for (const ad of ads.slice(0, 10)) {
+    const variants = ad.duplicate_count > 1 ? ` | ${ad.duplicate_count} variants` : "";
     console.log(
-      `[fbads:test]   ${ad.advertiser ?? "?"} | ${ad.days_running ?? "?"}d | ${ad.media_urls.length} media | ${ad.ad_copy.slice(0, 80).replace(/\n/g, " ")}`,
+      `[fbads:test]   ${ad.advertiser ?? "?"} | ${ad.days_running ?? "?"}d${variants} | ${ad.media_urls.length} media | ${ad.ad_copy.slice(0, 80).replace(/\n/g, " ")}`,
     );
   }
 
