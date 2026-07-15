@@ -35,12 +35,12 @@ import type { PipelineHandler } from "./index";
 const PREFERRED_MIN_DAYS_RUNNING = 30;
 // Extractor corpus caps: the agent stage is per vertical, and copy is
 // truncated so 5 calls stay token-safe.
-const MAX_CORPUS_PER_VERTICAL = 80;
+const MAX_CORPUS_PER_VERTICAL = 120;
 const MAX_PER_ADVERTISER_IN_CORPUS = 8;
 const COPY_TRUNCATE_CHARS = 400;
-const MAX_NEW_FORMATS_PER_VERTICAL = 5;
+const MAX_NEW_FORMATS_PER_VERTICAL = 8;
 // Example ads kept per library entry (freshest first).
-const MAX_EXAMPLES_PER_FORMAT = 5;
+const MAX_EXAMPLES_PER_FORMAT = 8;
 const EXAMPLE_SNIPPET_CHARS = 200;
 // A format unseen for this many consecutive scans turns 'fading'.
 const FADE_AFTER_MISSED = 2;
