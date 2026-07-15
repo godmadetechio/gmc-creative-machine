@@ -59,7 +59,8 @@ export function CandidateCard({
     <Card
       className={cn(
         "overflow-hidden py-0",
-        candidate.status === "rejected" && "opacity-60",
+        (candidate.status === "rejected" || candidate.status === "superseded") &&
+          "opacity-60",
       )}
     >
       <div className="bg-muted relative aspect-video">
@@ -160,9 +161,19 @@ export function CandidateCard({
           {reviewed ? (
             <div className="flex items-center justify-between gap-2">
               <Badge
-                variant={candidate.status === "selected" ? "default" : "secondary"}
+                variant={
+                  candidate.status === "selected"
+                    ? "default"
+                    : candidate.status === "superseded"
+                      ? "outline"
+                      : "secondary"
+                }
               >
-                {candidate.status === "selected" ? "Selected" : "Rejected"}
+                {candidate.status === "selected"
+                  ? "Selected"
+                  : candidate.status === "superseded"
+                    ? "Superseded"
+                    : "Rejected"}
                 {candidate.reviewed_by && ` · ${candidate.reviewed_by}`}
               </Badge>
               <Button
@@ -174,7 +185,7 @@ export function CandidateCard({
                 disabled={pending}
               >
                 <Undo2 />
-                Undo
+                {candidate.status === "superseded" ? "Restore" : "Undo"}
               </Button>
             </div>
           ) : (

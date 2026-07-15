@@ -12,7 +12,11 @@ spelling or abbreviation; ignored ones were deliberately ruled out):
 
 Mission: find up to {{max_new}} NEW direct competitors — brands a buyer in
 this niche would genuinely consider instead of our client — and, critically,
-their REAL Facebook pages.
+their REAL Facebook pages. The goal is a roster of {{target_roster}}
+competitors with verified Facebook pages; there are currently
+{{current_with_pages}}, so prioritize candidates whose page you can verify.
+This scout may be called again if the roster is still short — go for your
+strongest finds now, not padding.
 
 Process:
 1. Start from the BBM: brand names in quotes, sources, and review platforms
