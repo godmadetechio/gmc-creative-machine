@@ -67,6 +67,14 @@ export const ScorerOutputSchema = z.object({
 });
 export type ScorerOutput = z.infer<typeof ScorerOutputSchema>;
 
+// One media file mirrored to Supabase Storage (fbcdn URLs are signed and
+// expire — selected candidates are mirrored so Phase 3 keeps its references).
+export const MirroredMediaSchema = z.object({
+  source_url: z.string(),
+  storage_path: z.string(),
+});
+export type MirroredMedia = z.infer<typeof MirroredMediaSchema>;
+
 // An ad_candidates row as read from the DB.
 export const AdCandidateSchema = z.object({
   id: z.string().uuid(),
@@ -76,6 +84,8 @@ export const AdCandidateSchema = z.object({
   advertiser: z.string().nullable(),
   ad_url: z.string().nullable(),
   media_urls: z.array(z.string()).nullable(),
+  // default(null) keeps rows readable if the mirror migration lags a deploy
+  media_storage_paths: z.array(MirroredMediaSchema).nullable().default(null),
   ad_copy: z.string().nullable(),
   run_time_days: z.number().int().nullable(),
   match_score: z.number().int().min(0).max(100).nullable(),

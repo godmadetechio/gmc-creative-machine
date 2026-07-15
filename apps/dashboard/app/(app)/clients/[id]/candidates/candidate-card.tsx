@@ -35,7 +35,14 @@ function isImageUrl(url: string): boolean {
   return !/\.mp4(\?|$)/i.test(url);
 }
 
-export function CandidateCard({ candidate }: { candidate: AdCandidate }) {
+export function CandidateCard({
+  candidate,
+  mirroredPreviewUrl,
+}: {
+  candidate: AdCandidate;
+  /** Supabase Storage copy of the preview image — outlives expiring fbcdn URLs. */
+  mirroredPreviewUrl?: string;
+}) {
   const [state, formAction, pending] = useActionState<ReviewState, FormData>(
     reviewCandidate,
     null,
@@ -43,7 +50,8 @@ export function CandidateCard({ candidate }: { candidate: AdCandidate }) {
 
   const rationale = RationaleSchema.safeParse(candidate.match_rationale_json);
   const r = rationale.success ? rationale.data : {};
-  const preview = (candidate.media_urls ?? []).find(isImageUrl);
+  const preview =
+    mirroredPreviewUrl ?? (candidate.media_urls ?? []).find(isImageUrl);
   const reviewed = candidate.status !== "candidate";
 
   return (

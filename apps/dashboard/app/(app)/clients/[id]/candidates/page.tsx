@@ -2,10 +2,22 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
 import { z } from "zod";
-import { AdCandidateSchema, ClientSchema } from "@gmc/shared";
+import { AdCandidateSchema, ClientSchema, type AdCandidate } from "@gmc/shared";
 import { Card, CardContent } from "@/components/ui/card";
+import { storagePublicUrl } from "@/lib/media-mirror";
 import { createClient } from "@/lib/supabase/server";
 import { CandidateCard } from "./candidate-card";
+
+// Prefer the mirrored (Storage) copy for previews — the original fbcdn URLs
+// are signed and expire, so mirrored winners keep rendering.
+function mirroredPreview(candidate: AdCandidate): string | undefined {
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  if (!supabaseUrl) return undefined;
+  const image = (candidate.media_storage_paths ?? []).find(
+    (m) => !/\.(mp4|webm)$/i.test(m.storage_path),
+  );
+  return image ? storagePublicUrl(supabaseUrl, image.storage_path) : undefined;
+}
 
 export default async function CandidatesPage({
   params,
@@ -70,7 +82,11 @@ export default async function CandidatesPage({
           ) : (
             <div className="mt-3 grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
               {pending.map((candidate) => (
-                <CandidateCard key={candidate.id} candidate={candidate} />
+                <CandidateCard
+                  key={candidate.id}
+                  candidate={candidate}
+                  mirroredPreviewUrl={mirroredPreview(candidate)}
+                />
               ))}
             </div>
           )}
@@ -82,7 +98,11 @@ export default async function CandidatesPage({
               </h2>
               <div className="mt-3 grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
                 {reviewed.map((candidate) => (
-                  <CandidateCard key={candidate.id} candidate={candidate} />
+                  <CandidateCard
+                  key={candidate.id}
+                  candidate={candidate}
+                  mirroredPreviewUrl={mirroredPreview(candidate)}
+                />
                 ))}
               </div>
             </>
