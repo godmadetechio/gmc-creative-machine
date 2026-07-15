@@ -12,12 +12,16 @@
 export const FB_ADS_ACTOR_ID = "XtaWFhbtfxyzqrFmd";
 
 export function buildAdLibrarySearchUrl(query: string, country: string): string {
+  // keyword_unordered loosely matches each word anywhere in the ad and
+  // returns junk for multi-word queries (a live test matched aircraft ads
+  // for a fitness query) — exact phrase is the only usable multi-word mode.
+  const multiWord = query.trim().split(/\s+/).length > 1;
   const params = new URLSearchParams({
     active_status: "active",
     ad_type: "all",
     country,
     q: query,
-    search_type: "keyword_unordered",
+    search_type: multiWord ? "keyword_exact_phrase" : "keyword_unordered",
   });
   return `https://www.facebook.com/ads/library/?${params.toString()}`;
 }
