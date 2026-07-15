@@ -1,7 +1,7 @@
 import "../env";
 import { createServiceClient } from "../supabase";
 import { pipelines } from "../pipelines/index";
-import { RunSchema } from "@gmc/shared";
+import { RunSchema, StoredBBMSchema } from "@gmc/shared";
 
 // pnpm pipeline:test [client name]
 // Runs the buyer_brain pipeline at depth quick against a real client,
@@ -68,6 +68,37 @@ async function main() {
     .eq("id", run.id)
     .single();
   console.log(`[pipeline:test] run finished:`, JSON.stringify(finished, null, 2));
+
+  // Surface the avatars so a prompt/schema change is verifiable at a glance.
+  const bbmVersionId = (finished?.output_json as { bbm_version_id?: string } | null)
+    ?.bbm_version_id;
+  if (!bbmVersionId) return;
+  const { data: bbmRow, error: bbmError } = await supabase
+    .from("bbm_versions")
+    .select("version, matrix_json")
+    .eq("id", bbmVersionId)
+    .single();
+  if (bbmError || !bbmRow) {
+    console.warn(`[pipeline:test] could not load BBM ${bbmVersionId}: ${bbmError?.message}`);
+    return;
+  }
+  const parsed = StoredBBMSchema.safeParse(bbmRow.matrix_json);
+  if (!parsed.success) {
+    console.warn(`[pipeline:test] BBM v${bbmRow.version} failed schema parse:`, parsed.error.issues);
+    return;
+  }
+  const avatars = parsed.data.avatars ?? [];
+  console.log(`[pipeline:test] BBM v${bbmRow.version} avatars (${avatars.length}):`);
+  for (const a of avatars) {
+    console.log(`  • ${a.name} — ${a.identity_line}`);
+    console.log(`      pain: ${a.top_pain}`);
+    console.log(`      desire: ${a.top_desire}`);
+    console.log(`      belief to break: ${a.belief_to_break}`);
+    console.log(`      tone: ${a.tone_notes}`);
+  }
+  if (avatars.length === 0) {
+    console.warn(`[pipeline:test] WARNING: no avatars in BBM v${bbmRow.version} — composer output predates or violates the avatars schema`);
+  }
 }
 
 main().catch((err) => {
