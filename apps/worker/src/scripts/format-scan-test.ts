@@ -5,7 +5,7 @@ import { RunSchema, SeedVertical } from "@gmc/shared";
 
 // pnpm format:scan [--vertical=dtc] [--limit=N] [--country=US]
 // Runs the GLOBAL format_scan pipeline (client_id null), bypassing the
-// polling loop. Defaults to all verticals, 15 ads per advertiser, US.
+// polling loop. Defaults to all verticals, 25 ads per advertiser, US.
 // Pass --vertical=dtc --limit=10 for a cheap smoke test (a vertical-
 // restricted scan never fades formats). The Apify actor bills a minimum
 // of 10 charged results per advertiser — a lower --limit is clamped to
@@ -23,7 +23,7 @@ if (verticalFlag && !SeedVertical.safeParse(verticalFlag).success) {
   process.exit(1);
 }
 const limitFlag = flagValue("limit");
-const limitPerAdvertiser = limitFlag ? Number(limitFlag) : 15;
+const limitPerAdvertiser = limitFlag ? Number(limitFlag) : 25;
 if (!Number.isInteger(limitPerAdvertiser) || limitPerAdvertiser < 3 || limitPerAdvertiser > 30) {
   console.error(
     `[format:scan] --limit must be an integer 3-30, got "${limitFlag}" (values below 10 are clamped to the actor's 10-result billing minimum)`,

@@ -56,7 +56,7 @@ export const FormatScanInputSchema = z.object({
   /** Ads pulled per advertiser page. The Apify actor bills a minimum of 10
    * charged results per run — values below 10 are clamped to 10 by
    * buildActorInput (and billed as 10). */
-  limit_per_advertiser: z.number().int().min(3).max(30).default(15),
+  limit_per_advertiser: z.number().int().min(3).max(30).default(25),
   /** ISO 3166-1 alpha-2, passed to the Apify actor's country filter. */
   country: z
     .string()
@@ -91,6 +91,6 @@ export const FormatExtractorOutputSchema = z.object({
         example_ad_ids: z.array(z.string().min(1)).min(2).max(5),
       }),
     )
-    .max(5),
+    .max(8),
 });
 export type FormatExtractorOutput = z.infer<typeof FormatExtractorOutputSchema>;

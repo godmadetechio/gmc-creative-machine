@@ -129,12 +129,14 @@ export function FormatsExplorer({
   );
   const [openFormat, setOpenFormat] = useState<FormatLibraryEntry | null>(null);
 
+  // Only ever called from event handlers — the URL write must never run
+  // during render (React errors: "Cannot update a component (Router) while
+  // rendering a different component"), so it stays out of the setState
+  // updater, which React may invoke mid-render.
   const update = (patch: Partial<Filters>) => {
-    setFilters((prev) => {
-      const next = { ...prev, ...patch };
-      writeFilters(next);
-      return next;
-    });
+    const next = { ...filters, ...patch };
+    setFilters(next);
+    writeFilters(next);
   };
 
   const visible = useMemo(() => {
