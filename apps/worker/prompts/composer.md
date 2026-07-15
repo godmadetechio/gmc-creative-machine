@@ -28,6 +28,27 @@ This will be version {{next_version}}, generated at {{generated_at}}.
   specific reframe, mechanism, or proof type that would crack it. The
   breaking_angle must be concrete enough to brief an ad from.
 - patterns[]: behavior loops + what each implies for creative strategy.
+- avatars[]: 3-5 distinct buyer personas, DERIVED from the findings and the
+  categories above — never from new research or invention. Each avatar:
+  - name: short memorable handle ("Road-Warrior Rob"), used to tag creatives.
+  - identity_line: one line of who they are ("42yo consulting director,
+    travels weekly, ex-athlete").
+  - top_pain / top_desire: the single dominant pain and desire for THIS
+    persona, drawn from pains[]/desires[].
+  - belief_to_break: the one belief from beliefs[] most blocking their
+    purchase.
+  - tone_notes: how to talk to them — register, references, what to avoid.
+  Avatars must be meaningfully different from each other (different identity,
+  pain, or sophistication — not the same person at three ages). Every
+  downstream ad concept targets exactly one avatar, so make each one
+  briefable on its own.
+- Avatar stability: if the previous version has avatars, carry them forward
+  unchanged — same names, same identities — unless the research has
+  materially shifted (a persona's core pain/desire/belief no longer matches
+  the findings, or a clearly distinct new persona emerged). Downstream
+  performance tracking keys on avatar names, so churn is costly. When you do
+  add, drop, or reshape an avatar, say exactly what changed and why in
+  change_summary.
 - language_bank: 15-30 verbatim phrases usable directly in ad copy.
 - Hard caps: max 5 pains, 5 desires, 5 beliefs, 10 patterns, 40 language_bank
   phrases. When new signal deserves entry, the weakest existing entry must be

@@ -56,11 +56,24 @@ export const BBMPatternSchema = z.object({
   implication: z.string(),
 });
 
+// A persona the composer derives from the findings already in the matrix —
+// no new mining. Every downstream concept/script targets exactly one avatar.
+export const BBMAvatarSchema = z.object({
+  name: z.string().min(1),
+  identity_line: z.string().min(1),
+  top_pain: z.string().min(1),
+  top_desire: z.string().min(1),
+  belief_to_break: z.string().min(1),
+  tone_notes: z.string().min(1),
+});
+export type BBMAvatar = z.infer<typeof BBMAvatarSchema>;
+
 export const BBMSchema = z.object({
   client: z.string(),
   niche: z.string(),
   version: z.number().int().min(1),
   generated_at: z.string(),
+  avatars: z.array(BBMAvatarSchema).min(3).max(5),
   pains: z.array(BBMPainSchema).min(1),
   desires: z.array(BBMDesireSchema).min(1),
   beliefs: z.array(BBMBeliefSchema).min(1),
@@ -70,6 +83,13 @@ export const BBMSchema = z.object({
   change_summary: z.string().optional(),
 });
 export type BBM = z.infer<typeof BBMSchema>;
+
+// Read-side variant: matrices written before avatars existed are still valid
+// rows. New composer output is always validated against BBMSchema.
+export const StoredBBMSchema = BBMSchema.extend({
+  avatars: z.array(BBMAvatarSchema).max(5).optional(),
+});
+export type StoredBBM = z.infer<typeof StoredBBMSchema>;
 
 // runs.input_json for a buyer_brain run.
 export const BuyerBrainInputSchema = z.object({
@@ -83,7 +103,7 @@ export const BbmVersionSchema = z.object({
   id: z.string().uuid(),
   client_id: z.string().uuid(),
   version: z.number().int(),
-  matrix_json: BBMSchema,
+  matrix_json: StoredBBMSchema,
   sources_json: z.unknown().nullable(),
   created_at: z.string(),
   is_active: z.boolean(),

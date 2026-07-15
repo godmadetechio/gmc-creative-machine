@@ -3,9 +3,9 @@ import { notFound } from "next/navigation";
 import { ArrowLeft, ExternalLink } from "lucide-react";
 import { z } from "zod";
 import {
-  BBMSchema,
+  StoredBBMSchema,
   ClientSchema,
-  type BBM,
+  type StoredBBM,
   type VerbatimQuote,
 } from "@gmc/shared";
 import { Badge } from "@/components/ui/badge";
@@ -23,6 +23,7 @@ import { VersionSelect } from "./version-select";
 // overflow-hidden backstops anything that still won't wrap. CardTitle needs
 // its own min-w-0 too: CardHeader is a grid, so the title is a grid item.
 const SECTION_STYLES = {
+  avatars: "min-w-0 overflow-hidden border-violet-500/40",
   pains: "min-w-0 overflow-hidden border-red-500/40",
   desires: "min-w-0 overflow-hidden border-emerald-500/40",
   beliefs: "min-w-0 overflow-hidden border-amber-500/40",
@@ -120,7 +121,7 @@ export default async function BbmViewerPage({
     versions.find((row) => row.is_active) ??
     versions[0];
 
-  const parsed = BBMSchema.safeParse(selectedRow.matrix_json);
+  const parsed = StoredBBMSchema.safeParse(selectedRow.matrix_json);
 
   return (
     <div>
@@ -180,7 +181,7 @@ function BackLink({ id, name }: { id: string; name: string }) {
   );
 }
 
-function BbmSections({ bbm }: { bbm: BBM }) {
+function BbmSections({ bbm }: { bbm: StoredBBM }) {
   return (
     <>
       {bbm.change_summary && (
@@ -194,6 +195,46 @@ function BbmSections({ bbm }: { bbm: BBM }) {
             {bbm.change_summary}
           </CardContent>
         </Card>
+      )}
+
+      {bbm.avatars && bbm.avatars.length > 0 && (
+        <>
+          <SectionHeading title="Avatars" count={bbm.avatars.length} />
+          <div className="mt-3 grid gap-4 lg:grid-cols-2">
+            {bbm.avatars.map((avatar, i) => (
+              <Card key={i} className={SECTION_STYLES.avatars}>
+                <CardHeader>
+                  <CardTitle className={CARD_TITLE_CLASSES}>
+                    {avatar.name}
+                  </CardTitle>
+                  <p className="text-muted-foreground min-w-0 break-words pt-1 text-sm">
+                    {avatar.identity_line}
+                  </p>
+                </CardHeader>
+                <CardContent className="flex flex-col gap-2">
+                  <p className="text-sm">
+                    <span className="text-muted-foreground">Top pain: </span>
+                    {avatar.top_pain}
+                  </p>
+                  <p className="text-sm">
+                    <span className="text-muted-foreground">Top desire: </span>
+                    {avatar.top_desire}
+                  </p>
+                  <p className="text-sm">
+                    <span className="font-medium text-violet-400">
+                      Belief to break:{" "}
+                    </span>
+                    {avatar.belief_to_break}
+                  </p>
+                  <p className="text-sm">
+                    <span className="text-muted-foreground">Tone: </span>
+                    {avatar.tone_notes}
+                  </p>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        </>
       )}
 
       <SectionHeading title="Pains" count={bbm.pains.length} />
