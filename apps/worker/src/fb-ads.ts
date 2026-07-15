@@ -178,19 +178,41 @@ export function normalizeAd(item: RawItem, now = Date.now()): NormalizedAd | nul
   };
 }
 
+// The actor emits status items instead of ads when a source has nothing to
+// return — e.g. { error: "ADS_NOT_FOUND" } for a page running no ads or a
+// query matching nothing. These are expected outcomes, not mapping bugs.
+export function adErrorCode(item: RawItem): string | null {
+  const code = str(item.error ?? item.errorCode ?? item.error_code);
+  return code || null;
+}
+
 // Same convention as reddit-tools (the "reddit fix"): count what came in vs
-// what survived, and if everything was lost to field mapping, surface a raw
-// sample so the mismatch is diagnosable from run warnings alone.
+// what survived. Status items get an accurate "no ads" info warning; only a
+// genuine everything-lost-to-field-mapping case gets the mismatch warning
+// with a raw sample, so the diagnosis in run warnings can be trusted.
 export function normalizeAds(
   items: RawItem[],
   { label, onWarning }: { label: string; onWarning?: (message: string) => void },
 ): NormalizedAd[] {
-  const normalized = items
+  const statusItems = items.filter((item) => adErrorCode(item) !== null);
+  const adItems = items.filter((item) => adErrorCode(item) === null);
+  const normalized = adItems
     .map((item) => normalizeAd(item))
     .filter((ad): ad is NormalizedAd => ad !== null);
-  console.log(`[fb_ads] ${label}: ${items.length} raw → ${normalized.length} normalized`);
-  if (items.length > 0 && normalized.length === 0) {
-    const message = `fb_ads ${label}: normalized 0 ads from ${items.length} raw items — field mapping mismatch; sample raw item: ${truncate(JSON.stringify(items[0]), 600)}`;
+  console.log(
+    `[fb_ads] ${label}: ${items.length} raw → ${normalized.length} normalized${
+      statusItems.length > 0 ? ` (${statusItems.length} status items)` : ""
+    }`,
+  );
+  if (normalized.length === 0 && statusItems.length > 0) {
+    const what = label.startsWith("page_url")
+      ? "page is not running ads"
+      : "no results for query";
+    const message = `fb_ads ${label}: no ads returned (actor reported ${adErrorCode(statusItems[0]!)}) — ${what}`;
+    console.log(`[fb_ads] ${message}`);
+    onWarning?.(message);
+  } else if (adItems.length > 0 && normalized.length === 0) {
+    const message = `fb_ads ${label}: normalized 0 ads from ${adItems.length} raw items — field mapping mismatch; sample raw item: ${truncate(JSON.stringify(adItems[0]), 600)}`;
     console.warn(`[fb_ads] ${message}`);
     onWarning?.(message);
   }
