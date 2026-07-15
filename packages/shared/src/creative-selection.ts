@@ -6,7 +6,7 @@ import { CandidateStatus } from "./enums";
 
 // runs.input_json for a creative_selection run.
 export const CreativeSelectionInputSchema = z.object({
-  max_candidates: z.number().int().min(5).max(100).default(25),
+  max_candidates: z.number().int().min(5).max(100).default(30),
   /** ISO 3166-1 alpha-2, used in the Ad Library search URL. */
   country: z
     .string()
@@ -29,7 +29,7 @@ export const SearchTargetSchema = z.object({
 export type SearchTarget = z.infer<typeof SearchTargetSchema>;
 
 export const SearchTargetsSchema = z.object({
-  targets: z.array(SearchTargetSchema).min(5).max(10),
+  targets: z.array(SearchTargetSchema).min(3).max(10),
 });
 export type SearchTargets = z.infer<typeof SearchTargetsSchema>;
 
@@ -80,6 +80,8 @@ export const AdCandidateSchema = z.object({
   id: z.string().uuid(),
   client_id: z.string().uuid(),
   bbm_version_id: z.string().uuid().nullable(),
+  // default(null) keeps rows readable if the breadth migration lags a deploy
+  run_id: z.string().uuid().nullable().default(null),
   source: z.string(),
   advertiser: z.string().nullable(),
   ad_url: z.string().nullable(),

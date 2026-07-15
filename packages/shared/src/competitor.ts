@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { CompetitorSource, CompetitorStatus } from "./enums";
+import { CompetitorAdStatus, CompetitorSource, CompetitorStatus } from "./enums";
 
 // Competitor research as a first-class asset — scouted by an agent as step 0
 // of creative selection, or added manually in the dashboard.
@@ -15,6 +15,9 @@ export const CompetitorSchema = z.object({
   positioning_notes: z.string().nullable(),
   source: CompetitorSource,
   status: CompetitorStatus,
+  // defaults keep rows readable if the breadth migration lags a deploy
+  ad_status: CompetitorAdStatus.default("unknown"),
+  last_checked: z.string().nullable().default(null),
   created_at: z.string(),
 });
 export type Competitor = z.infer<typeof CompetitorSchema>;

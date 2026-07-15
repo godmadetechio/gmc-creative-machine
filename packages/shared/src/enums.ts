@@ -19,7 +19,12 @@ export const RunStatus = z.enum([
 ]);
 export type RunStatus = z.infer<typeof RunStatus>;
 
-export const CandidateStatus = z.enum(["candidate", "selected", "rejected"]);
+export const CandidateStatus = z.enum([
+  "candidate",
+  "selected",
+  "rejected",
+  "superseded",
+]);
 export type CandidateStatus = z.infer<typeof CandidateStatus>;
 
 export const CreativeType = z.enum(["static", "carousel", "ugc", "hero_arc"]);
@@ -36,3 +41,6 @@ export type CompetitorSource = z.infer<typeof CompetitorSource>;
 
 export const CompetitorStatus = z.enum(["active", "ignored"]);
 export type CompetitorStatus = z.infer<typeof CompetitorStatus>;
+
+export const CompetitorAdStatus = z.enum(["unknown", "active", "not_running"]);
+export type CompetitorAdStatus = z.infer<typeof CompetitorAdStatus>;

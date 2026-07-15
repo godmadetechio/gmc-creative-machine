@@ -29,26 +29,34 @@ import {
 import { loadPrompt } from "../prompts";
 import type { PipelineHandler } from "./index";
 
+// BREADTH strategy: pull the top 20-30 advertisers and keep each one's
+// ~3 best winners, instead of going deep on a few advertisers.
+
 // Per-target result cap (the actor is pay-per-result) and the max ads that
 // go to scoring — scoring is the expensive agent stage, so it gets its own
 // ceiling independent of how much the scrape returned.
 const PER_URL_CAP = 50;
-const SCORING_POOL = 60;
+const SCORING_POOL = 120;
 const SCORE_BATCH_SIZE = 8;
-const MIN_TARGETS = 5;
-const MAX_TARGETS = 10;
-const MAX_NEW_COMPETITORS = 8;
-// Per-advertiser pulls are the PRIMARY source (keyword search is noisy),
-// but keyword targets are how new competitors get discovered — leave a few
-// slots for them under MAX_TARGETS.
-const MAX_COMPETITOR_PAGE_TARGETS = 6;
+// The deriver only emits keyword targets now — roster pages are pulled
+// automatically in code.
+const MIN_KEYWORD_TARGETS = 3;
+const MAX_KEYWORD_TARGETS = 6;
+// Scout until the roster has this many competitors with verified FB pages
+// (bounded rounds; a dry round ends the loop early).
+const TARGET_ROSTER_WITH_PAGES = 25;
+const MAX_SCOUT_ROUNDS = 3;
+const MAX_NEW_COMPETITORS = 10; // per scout round
+const MAX_COMPETITOR_PAGE_TARGETS = 25;
 const MIN_COMPETITOR_CONFIDENCE = 3;
+// Pages that had no ads last pull are skipped until a re-check is due.
+const RECHECK_NOT_RUNNING_AFTER_DAYS = 30;
 // "ad longevity is the filter" — ads running 30+ days are likely winners.
 const PREFERRED_MIN_DAYS_RUNNING = 30;
-// Diversity guards: a heavy advertiser (page pulls return up to PER_URL_CAP
-// ads each) must not monopolize the scoring pool or the review queue.
-const MAX_POOL_PER_ADVERTISER = 12;
-const MAX_CANDIDATES_PER_ADVERTISER = 5;
+// Breadth guards: pre-score prune to each advertiser's ~5 longest-running
+// ads, and at most 3 final candidates per advertiser.
+const MAX_POOL_PER_ADVERTISER = 5;
+const MAX_CANDIDATES_PER_ADVERTISER = 3;
 
 export type CreativeSelectionResult = {
   candidateCount: number;
@@ -79,9 +87,9 @@ function scorerAdPayload(ad: NormalizedAd) {
 export async function runCreativeSelection(
   clientId: string,
   input: CreativeSelectionInput,
-  deps: { supabase: SupabaseClient },
+  deps: { supabase: SupabaseClient; runId: string },
 ): Promise<CreativeSelectionResult> {
-  const { supabase } = deps;
+  const { supabase, runId } = deps;
   const cost = new CostTracker();
   const warnings: string[] = [];
 
@@ -150,64 +158,92 @@ export async function runCreativeSelection(
     CompetitorSchema.parse(row),
   );
 
-  console.log(
-    `[creative_selection] scouting competitors (${existingCompetitors.length} on file)…`,
-  );
-  let scouted: ScoutedCompetitor[] = [];
-  try {
-    const scout = await withValidationRetry(CompetitorScoutOutputSchema, {
-      prompt: loadPrompt("competitor-scout", {
-        ...promptVars,
-        max_new: MAX_NEW_COMPETITORS,
-        existing_competitors_json: existingCompetitors.length
-          ? JSON.stringify(
-              existingCompetitors.map((c) => ({
-                name: c.name,
-                status: c.status,
-                fb_page_url: c.fb_page_url,
-              })),
-              null,
-              2,
-            )
-          : "none yet",
-      }),
-      tools: ["WebSearch"],
-      maxTurns: 20,
-      label: "competitor-scout",
-      onValidationError: validationWarner("competitor-scout"),
-    });
-    cost.add("competitor-scout", scout.costUsd, scout.usage);
-    scouted = scout.data.competitors;
-  } catch (err) {
-    cost.addFromError("competitor-scout", err);
-    const message = `competitor-scout failed — continuing with the ${existingCompetitors.length} competitors on file: ${
-      err instanceof Error ? err.message : err
-    }`;
-    warnings.push(message);
-    console.warn(`[creative_selection] ${message}`);
-  }
-
-  // Unverifiable page URLs lose the URL, not the competitor.
-  for (const s of scouted) {
-    if (s.fb_page_url && !isValidFacebookPageUrl(s.fb_page_url)) {
-      warnings.push(
-        `competitor-scout gave "${s.name}" an invalid Facebook page URL, dropped: ${s.fb_page_url}`,
-      );
-      delete s.fb_page_url;
-    }
-  }
-
-  // Upsert new names only — (client_id, lower(name)) is unique, and existing
-  // rows (including ignored ones) must not be duplicated or resurrected.
+  // Scout in rounds until the roster holds TARGET_ROSTER_WITH_PAGES active
+  // competitors with verified pages (a dry or failed round ends the loop).
   const knownNames = new Set(existingCompetitors.map((c) => c.name.trim().toLowerCase()));
-  const freshScouted = scouted.filter((s) => {
-    const key = s.name.trim().toLowerCase();
-    if (knownNames.has(key)) return false;
-    knownNames.add(key);
-    return true;
-  });
-  let addedCompetitors: Competitor[] = [];
-  if (freshScouted.length > 0) {
+  const activeWithPages = (list: Competitor[]) =>
+    list.filter((c) => c.status === "active" && c.fb_page_url).length;
+  const scouted: ScoutedCompetitor[] = [];
+  const addedCompetitors: Competitor[] = [];
+  let scoutRounds = 0;
+  while (
+    activeWithPages([...existingCompetitors, ...addedCompetitors]) <
+      TARGET_ROSTER_WITH_PAGES &&
+    scoutRounds < MAX_SCOUT_ROUNDS
+  ) {
+    scoutRounds += 1;
+    const roster = [...existingCompetitors, ...addedCompetitors];
+    console.log(
+      `[creative_selection] scout round ${scoutRounds}: ${activeWithPages(roster)}/${TARGET_ROSTER_WITH_PAGES} competitors with pages…`,
+    );
+
+    let roundScouted: ScoutedCompetitor[];
+    try {
+      const scout = await withValidationRetry(CompetitorScoutOutputSchema, {
+        prompt: loadPrompt("competitor-scout", {
+          ...promptVars,
+          max_new: MAX_NEW_COMPETITORS,
+          target_roster: TARGET_ROSTER_WITH_PAGES,
+          current_with_pages: activeWithPages(roster),
+          existing_competitors_json: roster.length
+            ? JSON.stringify(
+                roster.map((c) => ({
+                  name: c.name,
+                  status: c.status,
+                  fb_page_url: c.fb_page_url,
+                })),
+                null,
+                2,
+              )
+            : "none yet",
+        }),
+        tools: ["WebSearch"],
+        maxTurns: 20,
+        label: `competitor-scout-${scoutRounds}`,
+        onValidationError: validationWarner(`competitor-scout round ${scoutRounds}`),
+      });
+      cost.add(`competitor-scout-${scoutRounds}`, scout.costUsd, scout.usage);
+      roundScouted = scout.data.competitors;
+    } catch (err) {
+      cost.addFromError(`competitor-scout-${scoutRounds}`, err);
+      const message = `competitor-scout round ${scoutRounds} failed — continuing with the ${roster.length} competitors on file: ${
+        err instanceof Error ? err.message : err
+      }`;
+      warnings.push(message);
+      console.warn(`[creative_selection] ${message}`);
+      break;
+    }
+
+    // Unverifiable page URLs lose the URL, not the competitor.
+    for (const s of roundScouted) {
+      if (s.fb_page_url && !isValidFacebookPageUrl(s.fb_page_url)) {
+        warnings.push(
+          `competitor-scout gave "${s.name}" an invalid Facebook page URL, dropped: ${s.fb_page_url}`,
+        );
+        delete s.fb_page_url;
+      }
+    }
+    scouted.push(...roundScouted);
+
+    // Insert new names only — (client_id, lower(name)) is unique, and
+    // existing rows (including ignored) must not be duplicated/resurrected.
+    const freshScouted = roundScouted.filter((s) => {
+      const key = s.name.trim().toLowerCase();
+      if (knownNames.has(key)) return false;
+      knownNames.add(key);
+      return true;
+    });
+    for (const s of roundScouted) {
+      const dup = !freshScouted.includes(s) ? ", already on file" : "";
+      console.log(
+        `[creative_selection] scouted (conf ${s.confidence}${dup}): ${s.name} ${s.fb_page_url ?? "(no verified FB page)"}`,
+      );
+    }
+    if (freshScouted.length === 0) {
+      console.log(`[creative_selection] scout round ${scoutRounds} found nothing new — stopping`);
+      break;
+    }
+
     const { data: inserted, error: insertCompetitorsError } = await supabase
       .from("competitors")
       .insert(
@@ -228,15 +264,9 @@ export async function runCreativeSelection(
         `failed to write ${freshScouted.length} scouted competitors: ${insertCompetitorsError.message}`,
       );
       console.warn(`[creative_selection] competitor insert failed: ${insertCompetitorsError.message}`);
-    } else {
-      addedCompetitors = (inserted ?? []).map((row) => CompetitorSchema.parse(row));
+      break;
     }
-  }
-  for (const s of scouted) {
-    const dup = !freshScouted.includes(s) ? ", already on file" : "";
-    console.log(
-      `[creative_selection] scouted (conf ${s.confidence}${dup}): ${s.name} ${s.fb_page_url ?? "(no verified FB page)"}`,
-    );
+    addedCompetitors.push(...(inserted ?? []).map((row) => CompetitorSchema.parse(row)));
   }
 
   // Manual entries are operator-vetted (top confidence); agent entries carry
@@ -253,32 +283,54 @@ export async function runCreativeSelection(
       ? 5
       : (confidenceByName.get(c.name.trim().toLowerCase()) ?? MIN_COMPETITOR_CONFIDENCE);
 
-  const competitorPageTargets: SearchTarget[] = activeCompetitors
-    .filter(
-      (c) =>
-        c.fb_page_url &&
-        isValidFacebookPageUrl(c.fb_page_url) &&
-        competitorConfidence(c) >= MIN_COMPETITOR_CONFIDENCE,
-    )
-    .sort((a, b) => competitorConfidence(b) - competitorConfidence(a))
-    .slice(0, MAX_COMPETITOR_PAGE_TARGETS)
-    .map((c) => ({
-      kind: "page_url" as const,
-      value: c.fb_page_url!,
-      rationale: `per-advertiser pull: ${c.name} (${c.source}, confidence ${competitorConfidence(c)})`,
-    }));
+  const normalizeTargetValue = (value: string) =>
+    value.trim().toLowerCase().replace(/\/+$/, "");
 
-  // ── 1. Derive search targets from the BBM ──────────────────────────────
+  // Pages that returned no ads on a recent pull are skipped (pay-per-result
+  // actor); they get re-checked once their last check is >30 days old.
+  const now = Date.now();
+  const recheckDue = (c: Competitor) =>
+    !c.last_checked ||
+    now - Date.parse(c.last_checked) >
+      RECHECK_NOT_RUNNING_AFTER_DAYS * 86_400_000;
+  const pullable = activeCompetitors.filter(
+    (c) =>
+      c.fb_page_url &&
+      isValidFacebookPageUrl(c.fb_page_url) &&
+      competitorConfidence(c) >= MIN_COMPETITOR_CONFIDENCE,
+  );
+  const skippedNotRunning = pullable.filter(
+    (c) => c.ad_status === "not_running" && !recheckDue(c),
+  );
+  if (skippedNotRunning.length > 0) {
+    console.log(
+      `[creative_selection] skipping ${skippedNotRunning.length} pages marked not_running (re-check after ${RECHECK_NOT_RUNNING_AFTER_DAYS}d): ${skippedNotRunning.map((c) => c.name).join(", ")}`,
+    );
+  }
+  const pageCompetitors = pullable
+    .filter((c) => c.ad_status !== "not_running" || recheckDue(c))
+    .sort((a, b) => competitorConfidence(b) - competitorConfidence(a))
+    .slice(0, MAX_COMPETITOR_PAGE_TARGETS);
+  const competitorByTargetValue = new Map(
+    pageCompetitors.map((c) => [normalizeTargetValue(c.fb_page_url!), c]),
+  );
+  const competitorPageTargets: SearchTarget[] = pageCompetitors.map((c) => ({
+    kind: "page_url" as const,
+    value: c.fb_page_url!,
+    rationale: `per-advertiser pull: ${c.name} (${c.source}, confidence ${competitorConfidence(c)})`,
+  }));
+
+  // ── 1. Derive keyword discovery targets from the BBM ───────────────────
   console.log(
-    `[creative_selection] deriving search targets from BBM v${bbmVersion.version}…`,
+    `[creative_selection] deriving keyword targets from BBM v${bbmVersion.version} (${competitorPageTargets.length} page pulls queued)…`,
   );
   let targets: SearchTarget[];
   try {
     const derived = await withValidationRetry(SearchTargetsSchema, {
       prompt: loadPrompt("search-deriver", {
         ...promptVars,
-        min_targets: MIN_TARGETS,
-        max_targets: MAX_TARGETS,
+        min_targets: MIN_KEYWORD_TARGETS,
+        max_targets: MAX_KEYWORD_TARGETS,
         per_url_cap: PER_URL_CAP,
         competitors_json: activeCompetitors.length
           ? JSON.stringify(
@@ -318,19 +370,20 @@ export async function runCreativeSelection(
     }
     return true;
   });
-  // The MUST-include rule is enforced here, not just in the prompt: roster
-  // competitor pages (confidence >= 3) go first, deriver targets fill the
-  // rest, deduped, capped at MAX_TARGETS.
-  const normalizeTargetValue = (value: string) =>
-    value.trim().toLowerCase().replace(/\/+$/, "");
+  // Roster page pulls first (built in code, not prompted), deriver keyword
+  // targets after, deduped, keyword count capped separately.
   const seenValues = new Set<string>();
   const merged: SearchTarget[] = [];
+  let keywordCount = 0;
   for (const target of [...competitorPageTargets, ...targets]) {
     const key = normalizeTargetValue(target.value);
     if (seenValues.has(key)) continue;
+    if (target.kind === "keyword") {
+      if (keywordCount >= MAX_KEYWORD_TARGETS) continue;
+      keywordCount += 1;
+    }
     seenValues.add(key);
     merged.push(target);
-    if (merged.length >= MAX_TARGETS) break;
   }
   targets = merged;
 
@@ -363,22 +416,50 @@ export async function runCreativeSelection(
 
   const perUrlCounts: Record<string, number> = {};
   const allAds: NormalizedAd[] = [];
+  // per-target normalized counts, to update competitor ad_status below
+  // (null = scrape errored, so the page's status stays unknown)
+  const normalizedPerTarget: (number | null)[] = [];
   for (const [i, outcome] of scrapeResults.entries()) {
     const target = targets[i]!;
     const label = `${target.kind}:${target.value}`;
     if (outcome.status === "fulfilled") {
       perUrlCounts[label] = outcome.value.length;
-      allAds.push(...normalizeAds(outcome.value, {
+      const normalized = normalizeAds(outcome.value, {
         label,
         onWarning: (message) => warnings.push(message),
-      }));
+      });
+      normalizedPerTarget.push(normalized.length);
+      allAds.push(...normalized);
     } else {
       perUrlCounts[label] = 0;
+      normalizedPerTarget.push(null);
       const message = `scrape failed for ${label}: ${
         outcome.reason instanceof Error ? outcome.reason.message : outcome.reason
       }`;
       warnings.push(message);
       console.warn(`[creative_selection] ${message}`);
+    }
+  }
+
+  // Record what each page pull found: not_running pages get skipped on
+  // future runs until their re-check is due.
+  const checkedAt = new Date().toISOString();
+  for (const [i, target] of targets.entries()) {
+    if (target.kind !== "page_url") continue;
+    const competitor = competitorByTargetValue.get(normalizeTargetValue(target.value));
+    const normalizedCount = normalizedPerTarget[i];
+    if (!competitor || normalizedCount == null) continue;
+    const { error: adStatusError } = await supabase
+      .from("competitors")
+      .update({
+        ad_status: normalizedCount > 0 ? "active" : "not_running",
+        last_checked: checkedAt,
+      })
+      .eq("id", competitor.id);
+    if (adStatusError) {
+      warnings.push(
+        `failed to update ad_status for competitor ${competitor.name}: ${adStatusError.message}`,
+      );
     }
   }
 
@@ -508,6 +589,7 @@ export async function runCreativeSelection(
       top.map(({ ad, score }) => ({
         client_id: clientId,
         bbm_version_id: bbmVersion.id,
+        run_id: runId,
         source: "fb_ad_library",
         advertiser: ad.advertiser,
         ad_url: ad.ad_url,
@@ -529,6 +611,29 @@ export async function runCreativeSelection(
     );
   }
 
+  // ── 6. Archive the previous queue — one run per review, never two ──────
+  // Prior rows still unreviewed become 'superseded' (hidden by default);
+  // reviewed rows (selected/rejected) are untouched. run_id.is.null covers
+  // pre-migration rows.
+  const { data: supersededRows, error: supersedeError } = await supabase
+    .from("ad_candidates")
+    .update({ status: "superseded" })
+    .eq("client_id", clientId)
+    .eq("status", "candidate")
+    .or(`run_id.is.null,run_id.neq.${runId}`)
+    .select("id");
+  if (supersedeError) {
+    warnings.push(
+      `failed to supersede previous candidates — the review queue may mix runs: ${supersedeError.message}`,
+    );
+  }
+  const supersededCount = supersededRows?.length ?? 0;
+  if (supersededCount > 0) {
+    console.log(
+      `[creative_selection] superseded ${supersededCount} unreviewed candidates from previous runs`,
+    );
+  }
+
   return {
     candidateCount: insertedRows?.length ?? top.length,
     costUsd: Number(cost.total.toFixed(4)),
@@ -538,15 +643,22 @@ export async function runCreativeSelection(
       bbm_version: bbmVersion.version,
       candidate_count: insertedRows?.length ?? top.length,
       candidate_advertisers: candidatesByAdvertiser.size,
+      superseded_previous: supersededCount,
       competitors: {
         on_file: existingCompetitors.length,
+        scout_rounds: scoutRounds,
         scouted: scouted.map((s) => ({
           name: s.name,
           fb_page_url: s.fb_page_url ?? null,
           confidence: s.confidence,
         })),
         added: addedCompetitors.map((c) => c.name),
+        roster_with_pages: activeWithPages([
+          ...existingCompetitors,
+          ...addedCompetitors,
+        ]),
         page_targets: competitorPageTargets.length,
+        skipped_not_running: skippedNotRunning.map((c) => c.name),
       },
       targets: targets.map((t) => ({ kind: t.kind, value: t.value })),
       scraped_raw: scrapedRaw,
@@ -565,7 +677,10 @@ export async function runCreativeSelection(
 
 export const creativeSelectionHandler: PipelineHandler = async ({ supabase, run }) => {
   const input = CreativeSelectionInputSchema.parse(run.input_json ?? {});
-  const result = await runCreativeSelection(run.client_id, input, { supabase });
+  const result = await runCreativeSelection(run.client_id, input, {
+    supabase,
+    runId: run.id,
+  });
 
   const { error } = await supabase
     .from("runs")
