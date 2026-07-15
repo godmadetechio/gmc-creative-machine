@@ -46,6 +46,9 @@ export type FormatSeedAdvertiser = z.infer<typeof FormatSeedAdvertiserSchema>;
 
 // runs.input_json for a format_scan run (a global run: runs.client_id null).
 export const FormatScanInputSchema = z.object({
+  /** Ads pulled per advertiser page. The Apify actor bills a minimum of 10
+   * charged results per run — values below 10 are clamped to 10 by
+   * buildActorInput (and billed as 10). */
   limit_per_advertiser: z.number().int().min(3).max(30).default(15),
   /** ISO 3166-1 alpha-2, passed to the Apify actor's country filter. */
   country: z
