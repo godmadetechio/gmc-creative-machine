@@ -7,6 +7,7 @@ export const RunType = z.enum([
   "creative_selection",
   "still_ads",
   "video_ads",
+  "format_scan",
 ]);
 export type RunType = z.infer<typeof RunType>;
 
@@ -49,3 +50,12 @@ export type CompetitorStatus = z.infer<typeof CompetitorStatus>;
 
 export const CompetitorAdStatus = z.enum(["unknown", "active", "not_running"]);
 export type CompetitorAdStatus = z.infer<typeof CompetitorAdStatus>;
+
+export const FormatStatus = z.enum(["active", "fading", "archived"]);
+export type FormatStatus = z.infer<typeof FormatStatus>;
+
+export const SeedVertical = z.enum(["dtc", "saas", "coaching", "info", "other"]);
+export type SeedVertical = z.infer<typeof SeedVertical>;
+
+export const SeedAdvertiserStatus = z.enum(["active", "inactive"]);
+export type SeedAdvertiserStatus = z.infer<typeof SeedAdvertiserStatus>;

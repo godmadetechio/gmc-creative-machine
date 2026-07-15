@@ -280,6 +280,7 @@ export async function runBuyerBrain(
 
 export const buyerBrainHandler: PipelineHandler = async ({ supabase, run }) => {
   const input = BuyerBrainInputSchema.parse(run.input_json ?? {});
+  if (!run.client_id) throw new Error("buyer_brain runs require a client_id");
   const result = await runBuyerBrain(run.client_id, input, { supabase });
 
   const { error } = await supabase
