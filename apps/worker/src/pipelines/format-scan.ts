@@ -392,9 +392,11 @@ export async function runFormatScan(
         exampleAdIds,
         `confirmation of "${entry.name}"`,
       );
-      const verticalsSeen = entry.verticals_seen.includes(vertical)
-        ? entry.verticals_seen
-        : [...entry.verticals_seen, vertical];
+      // Verticals accrue only from cited example ads — an extractor claim
+      // without evidence must not brand a format as proven in a vertical.
+      const verticalsSeen = [
+        ...new Set([...entry.verticals_seen, ...examples.map((e) => e.vertical)]),
+      ];
       const { error: updateError } = await supabase
         .from("format_library")
         .update({
@@ -436,7 +438,8 @@ export async function runFormatScan(
           psychology: proposed.psychology,
           skeleton: proposed.skeleton,
           status: "active",
-          verticals_seen: [vertical],
+          // from the cited examples, not the scan's vertical label
+          verticals_seen: [...new Set(examples.map((e) => e.vertical))],
           example_ads: examples.slice(0, MAX_EXAMPLES_PER_FORMAT),
           last_confirmed: now,
         })
@@ -483,11 +486,17 @@ export async function runFormatScan(
     } else {
       const unseen = (unseenRows ?? [])
         .map((row) => FormatLibraryEntrySchema.parse(row))
-        // Never-confirmed entries (the seeds) are exempt: several seeded
-        // formats are purely visual and the copy-only extractor cannot
-        // confirm them — a scan that cannot see a format is not evidence
-        // of its death. Fading tracks decay of once-confirmed formats.
-        .filter((f) => !confirmedThisScan.has(f.id) && f.last_confirmed !== null);
+        // Exempt from fading: never-confirmed entries (a scan that cannot
+        // see a format is not evidence of its death) and 'visual' formats
+        // — the text-only extractor structurally cannot confirm those, so
+        // they stay active until manually archived or a future vision
+        // pass can confirm them.
+        .filter(
+          (f) =>
+            !confirmedThisScan.has(f.id) &&
+            f.last_confirmed !== null &&
+            f.detection !== "visual",
+        );
       for (const entry of unseen) {
         const missed = entry.scans_missed + 1;
         const fades = missed >= FADE_AFTER_MISSED;

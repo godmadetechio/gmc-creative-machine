@@ -3,6 +3,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import {
+  FormatDetection,
   FormatLibraryEntrySchema,
   type FormatLibraryEntry,
   type SeedVertical,
@@ -24,6 +25,7 @@ export type SeedFormat = {
   description: string;
   psychology: string;
   skeleton: string;
+  detection: FormatDetection;
 };
 
 // Parses the fixed ## / **Description:** / **Psychology:** / **Skeleton:**
@@ -48,11 +50,20 @@ export function parseStaticFrameworks(md: string): SeedFormat[] {
       }
       return value;
     };
+    // Optional **Detection:** line; formats without one are text-detectable.
+    const detectionRaw = body.match(/\*\*Detection:\*\*\s*(\w+)/)?.[1];
+    const detection = FormatDetection.safeParse(detectionRaw ?? "text");
+    if (!detection.success) {
+      throw new Error(
+        `static-frameworks.md: format "${name}" has invalid **Detection:** "${detectionRaw}" (expected ${FormatDetection.options.join(" | ")})`,
+      );
+    }
     return {
       name,
       description: grab("Description"),
       psychology: grab("Psychology"),
       skeleton: grab("Skeleton"),
+      detection: detection.data,
     };
   });
   if (formats.length < 10) {
@@ -86,6 +97,7 @@ export async function seedLibraryIfEmpty(
       description: s.description,
       psychology: s.psychology,
       skeleton: s.skeleton,
+      detection: s.detection,
       status: "active",
       // Seeded formats have no confirmation yet — last_confirmed stays null
       // until a scan actually sees them in the wild.

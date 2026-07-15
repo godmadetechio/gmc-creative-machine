@@ -1,102 +1,101 @@
-import { ExternalLink } from "lucide-react";
+"use client";
+
+import { Eye } from "lucide-react";
 import type { FormatLibraryEntry, FormatStatus } from "@gmc/shared";
 import { Badge } from "@/components/ui/badge";
 import {
   Card,
   CardContent,
   CardDescription,
-  CardFooter,
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 import { relativeTime } from "@/lib/relative-time";
 
-const STATUS_STYLES: Record<FormatStatus, string> = {
+export const STATUS_STYLES: Record<FormatStatus, string> = {
   active: "bg-emerald-500/15 text-emerald-400",
   fading: "bg-amber-500/15 text-amber-400",
   archived: "bg-muted text-muted-foreground",
 };
 
-const STATUS_LABELS: Record<FormatStatus, string> = {
+export const STATUS_LABELS: Record<FormatStatus, string> = {
   active: "Active",
   fading: "Fading",
   archived: "Archived",
 };
 
-const MAX_EXAMPLES_SHOWN = 2;
-
-export function FormatCard({ format }: { format: FormatLibraryEntry }) {
-  const examples = format.example_ads.slice(0, MAX_EXAMPLES_SHOWN);
-
+export function FormatStatusBadge({ status }: { status: FormatStatus }) {
   return (
-    <Card className="gap-4">
-      <CardHeader>
-        <CardTitle className="flex items-center justify-between gap-2">
-          {format.name}
-          <Badge variant="secondary" className={cn(STATUS_STYLES[format.status])}>
-            {STATUS_LABELS[format.status]}
-          </Badge>
+    <Badge variant="secondary" className={cn(STATUS_STYLES[status])}>
+      {STATUS_LABELS[status]}
+    </Badge>
+  );
+}
+
+// "confirmed 3 days ago" — or the visual-format note: a text-only extractor
+// cannot confirm visually-defined formats, so "never confirmed" would read
+// as a defect when it's a known limitation.
+export function freshnessLine(format: FormatLibraryEntry): string {
+  if (format.last_confirmed) {
+    return `Confirmed ${relativeTime(format.last_confirmed)}`;
+  }
+  return format.detection === "visual"
+    ? "Visual format — not auto-confirmed"
+    : "Never confirmed in a scan yet";
+}
+
+// Compact grid tile: name, one-line description, vertical badges,
+// freshness. Click opens the detail dialog.
+export function FormatCard({
+  format,
+  onOpen,
+}: {
+  format: FormatLibraryEntry;
+  onOpen: () => void;
+}) {
+  return (
+    <Card
+      role="button"
+      tabIndex={0}
+      onClick={onOpen}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          onOpen();
+        }
+      }}
+      className="hover:border-ring/40 cursor-pointer gap-2 py-4 transition-colors"
+    >
+      <CardHeader className="gap-1">
+        <CardTitle className="flex items-center justify-between gap-2 text-base">
+          <span className="flex items-center gap-1.5">
+            {format.name}
+            {format.detection === "visual" && (
+              <Eye
+                className="text-muted-foreground size-3.5 shrink-0"
+                aria-label="Visual format"
+              />
+            )}
+          </span>
+          <FormatStatusBadge status={format.status} />
         </CardTitle>
-        <CardDescription>{format.description}</CardDescription>
+        <CardDescription className="line-clamp-2">
+          {format.description}
+        </CardDescription>
       </CardHeader>
-      <CardContent className="flex flex-col gap-3 text-sm">
-        <p className="text-muted-foreground">{format.psychology}</p>
-        <pre className="bg-muted/50 overflow-x-auto rounded-md p-3 font-mono text-xs whitespace-pre-wrap">
-          {format.skeleton}
-        </pre>
+      <CardContent className="flex flex-col gap-2">
         {format.verticals_seen.length > 0 && (
-          <div className="flex flex-wrap gap-1.5">
+          <div className="flex flex-wrap gap-1">
             {format.verticals_seen.map((vertical) => (
-              <Badge key={vertical} variant="outline">
+              <Badge key={vertical} variant="outline" className="text-xs">
                 {vertical}
               </Badge>
             ))}
           </div>
         )}
-        {examples.length > 0 && (
-          <div className="flex flex-col gap-2">
-            {examples.map((example) => (
-              <div
-                key={example.ad_url}
-                className="border-border rounded-md border p-2 text-xs"
-              >
-                <div className="flex items-center justify-between gap-2">
-                  <span className="font-medium">
-                    {example.advertiser ?? "Unknown advertiser"}
-                  </span>
-                  <span className="text-muted-foreground shrink-0">
-                    {example.days_running != null
-                      ? `${example.days_running}d running`
-                      : ""}
-                  </span>
-                </div>
-                {example.copy_snippet && (
-                  <p className="text-muted-foreground mt-1 line-clamp-2">
-                    {example.copy_snippet}
-                  </p>
-                )}
-                <a
-                  href={example.ad_url}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="text-muted-foreground hover:text-foreground mt-1 inline-flex items-center gap-1"
-                >
-                  <ExternalLink className="size-3" />
-                  View in Ad Library
-                </a>
-              </div>
-            ))}
-          </div>
-        )}
+        <p className="text-muted-foreground text-xs">{freshnessLine(format)}</p>
       </CardContent>
-      <CardFooter className="text-muted-foreground text-xs">
-        {format.last_confirmed
-          ? `Confirmed ${relativeTime(format.last_confirmed)}`
-          : "Never confirmed in a scan yet"}
-        {format.scans_missed > 0 &&
-          ` · unseen for ${format.scans_missed} scan${format.scans_missed === 1 ? "" : "s"}`}
-      </CardFooter>
     </Card>
   );
 }

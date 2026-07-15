@@ -1,5 +1,10 @@
 import { z } from "zod";
-import { FormatStatus, SeedAdvertiserStatus, SeedVertical } from "./enums";
+import {
+  FormatDetection,
+  FormatStatus,
+  SeedAdvertiserStatus,
+  SeedVertical,
+} from "./enums";
 
 // FORMAT LIBRARY (agency-level, cross-client) schemas — see
 // AI_ADS_TRAINING_INTEGRATION.md §2a. Formats are layout/structure patterns
@@ -25,6 +30,8 @@ export const FormatLibraryEntrySchema = z.object({
   example_ads: z.array(FormatExampleAdSchema).default([]),
   verticals_seen: z.array(SeedVertical).default([]),
   status: FormatStatus,
+  // default keeps rows readable if the detection migration lags a deploy
+  detection: FormatDetection.default("text"),
   scans_missed: z.number().int().default(0),
   first_seen: z.string(),
   last_confirmed: z.string().nullable(),
