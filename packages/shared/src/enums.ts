@@ -59,3 +59,9 @@ export type SeedVertical = z.infer<typeof SeedVertical>;
 
 export const SeedAdvertiserStatus = z.enum(["active", "inactive"]);
 export type SeedAdvertiserStatus = z.infer<typeof SeedAdvertiserStatus>;
+
+// How a format can be recognized in scraped ads: 'text' via ad copy,
+// 'visual' only by looking at the creative (exempt from fading until a
+// vision pass exists), 'both' when either works.
+export const FormatDetection = z.enum(["text", "visual", "both"]);
+export type FormatDetection = z.infer<typeof FormatDetection>;

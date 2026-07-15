@@ -5,7 +5,9 @@ the global `format_library` and is read by Phase 3 concept agents as the layout
 source. The worker seeder parses the exact
 `##` / `**Description:**` / `**Psychology:**` / `**Skeleton:**` structure below —
 keep it when editing, and never add double-curly-brace placeholders
-(loadPrompt throws on any it can't resolve).
+(loadPrompt throws on any it can't resolve). An optional `**Detection:**`
+line (text | visual | both, default text) marks formats the text-only
+extractor cannot confirm — 'visual' formats are exempt from fading.
 
 ## Us vs Them
 **Description:** Two-column comparison of the old way (or competitors as a category) versus the product's way.
@@ -28,6 +30,7 @@ keep it when editing, and never add double-curly-brace placeholders
 
 ## iPhone Notes
 **Description:** The ad is a screenshot of a note in the iPhone Notes app (or a text-message thread) — plain text, native UI.
+**Detection:** visual
 **Psychology:** Native camouflage — it reads as a friend's note, not an ad, so ad-blindness never triggers. The lo-fi format signals authenticity and makes claims feel like private advice rather than marketing.
 **Skeleton:**
 - Notes-app (or iMessage) UI chrome: title bar, timestamp
@@ -48,6 +51,7 @@ keep it when editing, and never add double-curly-brace placeholders
 
 ## Before / After
 **Description:** Split-frame showing the state before the product and the state after.
+**Detection:** visual
 **Psychology:** Visualized transformation — the buyer sees the gap between their current self and desired self, and the product is the bridge. The most primal proof format: outcomes, not arguments.
 **Skeleton:**
 - Two panels side-by-side (or top/bottom), labeled "Before" / "After"
@@ -87,6 +91,7 @@ keep it when editing, and never add double-curly-brace placeholders
 
 ## N Reasons Why
 **Description:** A numbered list — "7 reasons why X" or "5 signs you need Y" — laid out as the ad itself.
+**Detection:** visual
 **Psychology:** Numbered lists promise finite, skimmable value (a known cognitive shortcut), and each reason is another hook — one of N will land on any given reader. Odd, specific numbers read as researched, not rounded.
 **Skeleton:**
 - Headline: number + promise ("6 reasons runners are switching to ___")
@@ -97,6 +102,7 @@ keep it when editing, and never add double-curly-brace placeholders
 
 ## Sticky Note
 **Description:** A handwritten-style note on a sticky note (or torn paper/whiteboard), photographed as if left for the reader.
+**Detection:** visual
 **Psychology:** Handwriting signals a human, effortful, personal message — the opposite of polished ad craft — which disarms skepticism. Feels like a reminder you wrote yourself, so the message is adopted, not evaluated.
 **Skeleton:**
 - Single sticky note (or scrap of paper) fills the frame, slightly rotated
