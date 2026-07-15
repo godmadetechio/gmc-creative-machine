@@ -6,7 +6,7 @@ import { CandidateStatus } from "./enums";
 
 // runs.input_json for a creative_selection run.
 export const CreativeSelectionInputSchema = z.object({
-  max_candidates: z.number().int().min(5).max(100).default(30),
+  max_candidates: z.number().int().min(5).max(100).default(60),
   /** ISO 3166-1 alpha-2, used in the Ad Library search URL. */
   country: z
     .string()

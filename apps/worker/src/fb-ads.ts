@@ -57,6 +57,9 @@ export type NormalizedAd = {
   collation_id: string | null;
   /** Actor's display format (IMAGE / VIDEO / CAROUSEL / DCO…) when present. */
   display_format: string | null;
+  /** The advertiser's Facebook page URL from the ad snapshot, when present —
+   * feeds the discovery loop that registers new competitors. */
+  page_profile_uri: string | null;
   /** How many scraped near-identical variants this ad survived dedupe for —
    * more variants = more advertiser conviction in the creative. */
   duplicate_count: number;
@@ -210,6 +213,10 @@ export function normalizeAd(item: RawItem, now = Date.now()): NormalizedAd | nul
       str(
         get(item, ["snapshot", "display_format"]) ?? item.display_format,
       ).toLowerCase() || null,
+    page_profile_uri:
+      str(
+        get(item, ["snapshot", "page_profile_uri"]) ?? item.page_profile_uri,
+      ) || null,
     duplicate_count: 1,
   };
 }

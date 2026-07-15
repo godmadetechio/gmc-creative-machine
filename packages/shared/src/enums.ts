@@ -36,7 +36,12 @@ export type CreativeModel = z.infer<typeof CreativeModel>;
 export const CreativeStatus = z.enum(["draft", "approved", "rejected"]);
 export type CreativeStatus = z.infer<typeof CreativeStatus>;
 
-export const CompetitorSource = z.enum(["agent", "manual", "bbm_research"]);
+export const CompetitorSource = z.enum([
+  "agent",
+  "manual",
+  "bbm_research",
+  "ad_library_discovery",
+]);
 export type CompetitorSource = z.infer<typeof CompetitorSource>;
 
 export const CompetitorStatus = z.enum(["active", "ignored"]);
