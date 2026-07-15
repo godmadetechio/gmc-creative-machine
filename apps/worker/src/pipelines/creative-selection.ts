@@ -22,6 +22,7 @@ import {
   buildActorInput,
   buildAdLibrarySearchUrl,
   dedupeAds,
+  formatHint,
   normalizeAds,
   type NormalizedAd,
 } from "../fb-ads";
@@ -44,6 +45,10 @@ const MAX_COMPETITOR_PAGE_TARGETS = 6;
 const MIN_COMPETITOR_CONFIDENCE = 3;
 // "ad longevity is the filter" — ads running 30+ days are likely winners.
 const PREFERRED_MIN_DAYS_RUNNING = 30;
+// Diversity guards: a heavy advertiser (page pulls return up to PER_URL_CAP
+// ads each) must not monopolize the scoring pool or the review queue.
+const MAX_POOL_PER_ADVERTISER = 12;
+const MAX_CANDIDATES_PER_ADVERTISER = 5;
 
 export type CreativeSelectionResult = {
   candidateCount: number;
@@ -54,14 +59,20 @@ export type CreativeSelectionResult = {
 
 type ScorableAd = NormalizedAd & { score?: AdScore };
 
+function advertiserKey(ad: NormalizedAd): string {
+  return (ad.advertiser ?? ad.ad_id).trim().toLowerCase();
+}
+
 function scorerAdPayload(ad: NormalizedAd) {
   return {
     ad_id: ad.ad_id,
     advertiser: ad.advertiser,
     ad_copy: ad.ad_copy || "(no ad copy captured)",
-    media: `${ad.media_urls.length} media url(s)`,
+    format_hint: formatHint(ad),
+    media_count: ad.media_urls.length,
     platforms: ad.platforms,
     days_running: ad.days_running,
+    variant_count: ad.duplicate_count,
   };
 }
 
@@ -393,16 +404,29 @@ export async function runCreativeSelection(
     if (aPreferred !== bPreferred) return aPreferred ? -1 : 1;
     return (b.days_running ?? -1) - (a.days_running ?? -1);
   });
-  const pool: ScorableAd[] = ranked.slice(0, SCORING_POOL);
+  // Diversity guard: cap ads per advertiser so one heavy page pull can't
+  // fill the pool (a live run came back 95/101 from two advertisers).
+  const poolByAdvertiser = new Map<string, number>();
+  const pool: ScorableAd[] = [];
+  for (const ad of ranked) {
+    const key = advertiserKey(ad);
+    const count = poolByAdvertiser.get(key) ?? 0;
+    if (count >= MAX_POOL_PER_ADVERTISER) continue;
+    poolByAdvertiser.set(key, count + 1);
+    pool.push(ad);
+    if (pool.length >= SCORING_POOL) break;
+  }
   const youngInPool = pool.filter(
     (ad) => (ad.days_running ?? -1) < PREFERRED_MIN_DAYS_RUNNING,
   ).length;
   console.log(
-    `[creative_selection] ${scrapedRaw} raw → ${deduped.length} deduped → scoring ${pool.length} (${youngInPool} under ${PREFERRED_MIN_DAYS_RUNNING}d)`,
+    `[creative_selection] ${scrapedRaw} raw → ${deduped.length} deduped → scoring ${pool.length} from ${poolByAdvertiser.size} advertisers (${youngInPool} under ${PREFERRED_MIN_DAYS_RUNNING}d)`,
   );
-  if (youngInPool > 0) {
+  // Longevity is the filter, so only warn when it actually failed: a pool
+  // that is MOSTLY young means the scrape found few proven ads.
+  if (youngInPool > pool.length / 2) {
     warnings.push(
-      `${youngInPool}/${pool.length} ads in the scoring pool run < ${PREFERRED_MIN_DAYS_RUNNING} days (or have no start date) — not enough long-runners scraped`,
+      `${youngInPool}/${pool.length} ads in the scoring pool run < ${PREFERRED_MIN_DAYS_RUNNING} days (or have no start date) — few long-runners found; the longevity signal is weak this run`,
     );
   }
 
@@ -463,11 +487,20 @@ export async function runCreativeSelection(
     );
   }
 
-  // ── 5. Top N → ad_candidates ───────────────────────────────────────────
-  const top = scored
+  // ── 5. Top N → ad_candidates (diversity-capped per advertiser) ─────────
+  const rankedByScore = scored
     .map((ad) => ({ ad, score: scoreById.get(ad.ad_id)! }))
-    .sort((a, b) => b.score.score - a.score.score)
-    .slice(0, input.max_candidates);
+    .sort((a, b) => b.score.score - a.score.score);
+  const candidatesByAdvertiser = new Map<string, number>();
+  const top: typeof rankedByScore = [];
+  for (const entry of rankedByScore) {
+    const key = advertiserKey(entry.ad);
+    const count = candidatesByAdvertiser.get(key) ?? 0;
+    if (count >= MAX_CANDIDATES_PER_ADVERTISER) continue;
+    candidatesByAdvertiser.set(key, count + 1);
+    top.push(entry);
+    if (top.length >= input.max_candidates) break;
+  }
 
   const { data: insertedRows, error: insertError } = await supabase
     .from("ad_candidates")
@@ -482,7 +515,9 @@ export async function runCreativeSelection(
         ad_copy: ad.ad_copy || null,
         run_time_days: ad.days_running,
         match_score: score.score,
-        match_rationale_json: score,
+        // duplicate_count rides along with the scorer output: variants are
+        // a conviction signal the reviewer should see.
+        match_rationale_json: { ...score, duplicate_count: ad.duplicate_count },
         status: "candidate",
       })),
     )
@@ -502,6 +537,7 @@ export async function runCreativeSelection(
       bbm_version_id: bbmVersion.id,
       bbm_version: bbmVersion.version,
       candidate_count: insertedRows?.length ?? top.length,
+      candidate_advertisers: candidatesByAdvertiser.size,
       competitors: {
         on_file: existingCompetitors.length,
         scouted: scouted.map((s) => ({

@@ -22,6 +22,7 @@ const RationaleSchema = z
     format: z.string(),
     transferable_skeleton: z.string(),
     match_rationale: z.string(),
+    duplicate_count: z.number(),
   })
   .partial();
 
@@ -97,7 +98,8 @@ export function CandidateCard({
               {candidate.run_time_days != null
                 ? `Running ${candidate.run_time_days} days`
                 : "Run time unknown"}
-              {r.format && ` · ${r.format}`}
+              {r.format && r.format !== "unknown" && ` · ${r.format}`}
+              {(r.duplicate_count ?? 1) > 1 && ` · ${r.duplicate_count} variants`}
               {r.hook_pattern && ` · ${r.hook_pattern}`}
             </p>
           </div>

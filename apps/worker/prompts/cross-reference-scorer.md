@@ -4,9 +4,12 @@ You score competitor ads against a Buyer Brain Matrix. Client:
 Active Buyer Brain Matrix:
 {{bbm_json}}
 
-Ads to score (JSON array; each has ad_id, advertiser, ad_copy, format/media
-metadata, days_running — you see the copy and metadata, not the imagery
-itself):
+Ads to score (JSON array; each has ad_id, advertiser, ad_copy, format_hint,
+media_count, days_running, variant_count — you see the copy and metadata,
+not the imagery itself). variant_count = how many near-identical variants
+of this creative the advertiser runs simultaneously; more variants = more
+advertiser conviction, treat it as a reinforcing signal alongside
+days_running:
 {{ads_json}}
 
 AUDIENCE GATE — apply before the rubric: is this ad's buyer our client's
@@ -38,7 +41,8 @@ For every ad return:
   mechanism: proof | reframe | demonstration | story | none }
 - hook_pattern: the hook mechanic in a few words (question, callout,
   us-vs-them, before/after, testimonial…)
-- format: static | video | carousel | unknown (from the media metadata)
+- format: static | video | carousel | unknown (from format_hint / media
+  metadata — only "unknown" when there is genuinely nothing to go on)
 - transferable_skeleton: 2-3 sentences — the rebuildable structure
 - match_rationale: why this scored what it scored, in plain language
 
