@@ -7,6 +7,7 @@ export const RUN_TYPE_LABELS: Record<RunType, string> = {
   creative_selection: "Creative Selection",
   still_ads: "Still Ads",
   video_ads: "Video Ads",
+  format_scan: "Format Scan",
 };
 
 const STATUS_STYLES: Record<RunStatus, string> = {

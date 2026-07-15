@@ -6,6 +6,7 @@ import {
   Users,
   Play,
   ClipboardCheck,
+  LayoutTemplate,
   Settings,
   type LucideIcon,
 } from "lucide-react";
@@ -15,6 +16,7 @@ const NAV_ITEMS: { href: string; label: string; icon: LucideIcon }[] = [
   { href: "/clients", label: "Clients", icon: Users },
   { href: "/runs", label: "Runs", icon: Play },
   { href: "/review", label: "Review", icon: ClipboardCheck },
+  { href: "/formats", label: "Formats", icon: LayoutTemplate },
   { href: "/settings", label: "Settings", icon: Settings },
 ];
 

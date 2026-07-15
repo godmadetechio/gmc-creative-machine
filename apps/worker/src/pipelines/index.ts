@@ -2,6 +2,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Run, RunType } from "@gmc/shared";
 import { buyerBrainHandler } from "./buyer-brain";
 import { creativeSelectionHandler } from "./creative-selection";
+import { formatScanHandler } from "./format-scan";
 
 export type PipelineContext = {
   supabase: SupabaseClient;
@@ -32,4 +33,5 @@ export const pipelines: Record<RunType, PipelineHandler> = {
   creative_selection: creativeSelectionHandler,
   still_ads: notImplemented("Phase 3"),
   video_ads: notImplemented("Phase 4"),
+  format_scan: formatScanHandler,
 };

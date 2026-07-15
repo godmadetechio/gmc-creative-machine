@@ -827,6 +827,7 @@ export async function runCreativeSelection(
 
 export const creativeSelectionHandler: PipelineHandler = async ({ supabase, run }) => {
   const input = CreativeSelectionInputSchema.parse(run.input_json ?? {});
+  if (!run.client_id) throw new Error("creative_selection runs require a client_id");
   const result = await runCreativeSelection(run.client_id, input, {
     supabase,
     runId: run.id,

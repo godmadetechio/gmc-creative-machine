@@ -3,7 +3,8 @@ import { RunStatus, RunType } from "./enums";
 
 export const RunSchema = z.object({
   id: z.string().uuid(),
-  client_id: z.string().uuid(),
+  // Null for global (cross-client) runs, e.g. format_scan.
+  client_id: z.string().uuid().nullable(),
   type: RunType,
   status: RunStatus,
   input_json: z.unknown().nullable(),
