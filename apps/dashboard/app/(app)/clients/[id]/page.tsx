@@ -8,7 +8,7 @@ import {
   Pencil,
 } from "lucide-react";
 import { z } from "zod";
-import { ClientSchema, RunStatus } from "@gmc/shared";
+import { ClientSchema, CompetitorSchema, RunStatus } from "@gmc/shared";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -28,6 +28,7 @@ import { RunStatusBadge } from "@/components/run-status-badge";
 import { createClient } from "@/lib/supabase/server";
 import { ClientDialog } from "../client-dialog";
 import { AutoRefresh } from "./auto-refresh";
+import { CompetitorsCard } from "./competitors-card";
 import { RunBuyerBrainButton } from "./run-buyer-brain-button";
 import { RunCreativeSelectionButton } from "./run-creative-selection-button";
 
@@ -141,8 +142,14 @@ export default async function ClientDetailPage({
 
   const supabase = await createClient();
 
-  const [clientResult, runsResult, bbmResult, activeBbmResult, candidatesResult] =
-    await Promise.all([
+  const [
+    clientResult,
+    runsResult,
+    bbmResult,
+    activeBbmResult,
+    candidatesResult,
+    competitorsResult,
+  ] = await Promise.all([
       supabase.from("clients").select("*").eq("id", id).maybeSingle(),
       supabase
         .from("runs")
@@ -169,6 +176,12 @@ export default async function ClientDetailPage({
         .from("ad_candidates")
         .select("id, status")
         .eq("client_id", id),
+      supabase
+        .from("competitors")
+        .select("*")
+        .eq("client_id", id)
+        .order("status", { ascending: true })
+        .order("created_at", { ascending: true }),
     ]);
 
   if (!clientResult.data) notFound();
@@ -184,6 +197,9 @@ export default async function ClientDetailPage({
   const pendingCandidates = candidates.filter(
     (c) => c.status === "candidate",
   ).length;
+  const competitors = (competitorsResult.data ?? []).map((row) =>
+    CompetitorSchema.parse(row),
+  );
 
   const isActive = (run: RunRow) =>
     run.status === "queued" || run.status === "running";
@@ -275,6 +291,15 @@ export default async function ClientDetailPage({
           detail={(run) => runDepth(run.input_json)}
         />
       )}
+
+      <div className="mt-8">
+        <h2 className="text-lg font-semibold">Competitors</h2>
+        <p className="text-muted-foreground mt-1 text-sm">
+          Scouted automatically on each Creative Selection run, or added by
+          hand. Ignored competitors are never searched.
+        </p>
+        <CompetitorsCard clientId={client.id} competitors={competitors} />
+      </div>
 
       <div className="mt-8 flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-3">

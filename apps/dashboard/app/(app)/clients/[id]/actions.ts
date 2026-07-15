@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
+import { isValidFacebookPageUrl } from "@gmc/shared";
 import { createClient } from "@/lib/supabase/server";
 
 export type EnqueueState =
@@ -131,5 +132,96 @@ export async function enqueueCreativeSelection(
 
   revalidatePath(`/clients/${client_id}`);
   revalidatePath("/runs");
+  return { status: "success" };
+}
+
+const AddCompetitorSchema = z.object({
+  client_id: z.string().uuid(),
+  name: z.string().trim().min(1, "Name is required").max(120),
+  fb_page_url: z
+    .string()
+    .trim()
+    .transform((v) => v || null)
+    .nullable(),
+});
+
+export async function addCompetitor(
+  _prevState: EnqueueState,
+  formData: FormData,
+): Promise<EnqueueState> {
+  const parsed = AddCompetitorSchema.safeParse({
+    client_id: formData.get("client_id"),
+    name: formData.get("name"),
+    fb_page_url: formData.get("fb_page_url") ?? "",
+  });
+  if (!parsed.success) {
+    return {
+      status: "error",
+      message: parsed.error.issues[0]?.message ?? "Invalid input",
+    };
+  }
+  const { client_id, name, fb_page_url } = parsed.data;
+
+  if (fb_page_url && !isValidFacebookPageUrl(fb_page_url)) {
+    return {
+      status: "error",
+      message:
+        "Not a Facebook page URL — expected https://www.facebook.com/<page>",
+    };
+  }
+
+  const supabase = await createClient();
+  const { error } = await supabase.from("competitors").insert({
+    client_id,
+    name,
+    fb_page_url,
+    source: "manual",
+    status: "active",
+  });
+  if (error) {
+    // 23505 = unique_violation on (client_id, lower(name))
+    return {
+      status: "error",
+      message:
+        error.code === "23505"
+          ? `"${name}" is already on the competitor list.`
+          : error.message,
+    };
+  }
+
+  revalidatePath(`/clients/${client_id}`);
+  return { status: "success" };
+}
+
+const CompetitorStatusSchema = z.object({
+  competitor_id: z.string().uuid(),
+  client_id: z.string().uuid(),
+  status: z.enum(["active", "ignored"]),
+});
+
+export async function setCompetitorStatus(
+  _prevState: EnqueueState,
+  formData: FormData,
+): Promise<EnqueueState> {
+  const parsed = CompetitorStatusSchema.safeParse({
+    competitor_id: formData.get("competitor_id"),
+    client_id: formData.get("client_id"),
+    status: formData.get("status"),
+  });
+  if (!parsed.success) {
+    return { status: "error", message: "Invalid input" };
+  }
+  const { competitor_id, client_id, status } = parsed.data;
+
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from("competitors")
+    .update({ status })
+    .eq("id", competitor_id);
+  if (error) {
+    return { status: "error", message: error.message };
+  }
+
+  revalidatePath(`/clients/${client_id}`);
   return { status: "success" };
 }
