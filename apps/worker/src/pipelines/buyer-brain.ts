@@ -10,6 +10,7 @@ import {
 } from "@gmc/shared";
 import { withValidationRetry, type AgentUsage } from "../agent";
 import { getApifyToken } from "../apify";
+import { CostTracker } from "../cost";
 import { loadPrompt } from "../prompts";
 import { createRedditMcpServer, REDDIT_TOOL_NAMES } from "../reddit-tools";
 import { createYoutubeMcpServer, YOUTUBE_TOOL_NAMES } from "../youtube-tools";
@@ -46,25 +47,6 @@ export type BuyerBrainResult = {
   warnings: string[];
   usage: Partial<Record<string, AgentUsage>>;
 };
-
-// Accumulates cost across every agent attempt, including failed ones, so
-// runs.cost_usd reflects what the run actually spent.
-class CostTracker {
-  total = 0;
-  usage: Partial<Record<string, AgentUsage>> = {};
-
-  add(label: string, costUsd: number, usage?: AgentUsage) {
-    this.total += costUsd;
-    if (usage) this.usage[label] = usage;
-  }
-
-  addFromError(label: string, err: unknown) {
-    const cost = (err as { costUsd?: number })?.costUsd;
-    if (typeof cost === "number") this.total += cost;
-    const usage = (err as { usage?: AgentUsage })?.usage;
-    if (usage) this.usage[label] = usage;
-  }
-}
 
 export async function runBuyerBrain(
   clientId: string,

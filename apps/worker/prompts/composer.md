@@ -29,6 +29,11 @@ This will be version {{next_version}}, generated at {{generated_at}}.
   breaking_angle must be concrete enough to brief an ad from.
 - patterns[]: behavior loops + what each implies for creative strategy.
 - language_bank: 15-30 verbatim phrases usable directly in ad copy.
+- Hard caps: max 5 pains, 5 desires, 5 beliefs, 10 patterns, 40 language_bank
+  phrases. When new signal deserves entry, the weakest existing entry must be
+  dropped or merged — name what was dropped and why in change_summary.
+  Ruthless pruning is part of the job: a matrix that only grows is a matrix
+  nobody reads.
 - Every pains/desires/beliefs entry cites at least one verbatim quote with
   its exact source_url and platform, copied unchanged from the findings.
   NEVER invent, merge, or reword quotes; never fabricate URLs.
