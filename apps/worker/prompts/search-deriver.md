@@ -14,16 +14,25 @@ competitor's Facebook page automatically as a per-advertiser ad pull — do
 NOT emit targets for roster competitors; your job is only the keyword
 searches that surface NEW advertisers. Each keyword target becomes an Ad
 Library search (~{{per_url_cap}} active ads), and every scraped ad is
-scored against the BBM.
+scored against the BBM. Keyword results also feed advertiser discovery —
+any advertiser found running an ad 30+ days gets auto-registered as a
+competitor for future page pulls — so a wide spread of DIFFERENT angles
+beats variations on one theme.
 
 Keyword mechanics: multi-word queries run as EXACT PHRASE match against ad
 text — a query only matches ads that contain those words VERBATIM. So use
-SHORT category phrases, 2-4 words, that would actually appear in (or
-describe) a competitor's ad — "fat loss coach", "nutrition coaching
-professionals", "metabolism after 40". NEVER use language-bank quotes or
+SHORT consumer-intent phrases, 2-4 words, generated from the BBM's angles,
+that would actually appear in (or describe) a competitor's ad. Proven
+winners from live runs: "no meal prep", "no cookie cutter plan" — angle
+phrases an ad would say to the buyer. Also good: category phrases like
+"fat loss coach", "metabolism after 40". NEVER use language-bank quotes or
 poetic consumer phrases as queries: real ads don't contain them verbatim
 and they match zero results. Single words match loosely — only use one
 when it is unambiguous (a brand name not on the roster).
+
+Banned queries (returned zero results in repeated past runs — do not
+reuse them or trivial rewordings of them):
+{{banned_keywords}}
 
 Exception: if while researching you VERIFY the real Facebook page of a
 direct competitor that is NOT on the roster (WebSearch "<brand> facebook

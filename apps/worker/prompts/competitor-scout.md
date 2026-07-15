@@ -28,16 +28,20 @@ Process:
    fb_page_url when verified (full https://www.facebook.com/... URL);
    otherwise omit the field entirely. A guessed URL poisons a paid
    per-advertiser ad pull downstream.
-3. Direct competitors only: same buyer, same problem, comparable offer.
-   A brand that shares keywords but sells to a different buyer is noise.
+3. Rings — ring-1 = direct competitors (same buyer, same problem,
+   comparable offer); ring-2 = adjacent offers in the client's broader
+   niche category serving overlapping buyers. {{ring_guidance}}
+   Either way, a brand that shares keywords but sells to a different
+   buyer entirely is noise.
 
 For every competitor:
 - name: the brand name as they write it
 - fb_page_url: only if verified (omit otherwise)
 - ig_handle: only if you actually saw it (omit otherwise, no @ prefix)
 - website: only if you actually saw it (omit otherwise)
-- positioning_notes: 1-2 sentences — who they target, their angle/offer,
-  and how they differ from our client
+- positioning_notes: MUST start with "Ring 1:" or "Ring 2:", then 1-2
+  sentences — who they target, their angle/offer, and how they differ
+  from our client
 - confidence: 1-5 (5 = verified FB page AND clearly direct competitor;
   3 = direct competitor, page unverified; 1 = adjacent guess)
 

@@ -3,13 +3,22 @@ import { createServiceClient } from "../supabase";
 import { pipelines } from "../pipelines/index";
 import { RunSchema } from "@gmc/shared";
 
-// pnpm pipeline:test-selection [client name] [country]
-// Runs the creative_selection pipeline with a small candidate cap against a
-// real client, bypassing the polling loop. Defaults to "Ben's Fitness".
+// pnpm pipeline:test-selection [client name] [country] [--max=N]
+// Runs the creative_selection pipeline against a real client, bypassing the
+// polling loop. Defaults to "Ben's Fitness", US, 60 candidates (breadth run;
+// pass --max=10 for a cheap smoke test).
 // Requires an active BBM for the client (run pipeline:test first).
 
-const clientName = process.argv[2] ?? "Ben's Fitness";
-const country = (process.argv[3] ?? "US").toUpperCase();
+const flags = process.argv.slice(2).filter((a) => a.startsWith("--"));
+const args = process.argv.slice(2).filter((a) => !a.startsWith("--"));
+const clientName = args[0] ?? "Ben's Fitness";
+const country = (args[1] ?? "US").toUpperCase();
+const maxFlag = flags.find((f) => f.startsWith("--max="))?.slice("--max=".length);
+const maxCandidates = maxFlag ? Number(maxFlag) : 60;
+if (!Number.isInteger(maxCandidates) || maxCandidates < 5 || maxCandidates > 100) {
+  console.error(`[pipeline:test-selection] --max must be an integer 5-100, got "${maxFlag}"`);
+  process.exit(1);
+}
 
 async function main() {
   const supabase = createServiceClient();
@@ -30,7 +39,7 @@ async function main() {
     );
   }
   console.log(
-    `[pipeline:test-selection] client: ${client.name} (${client.id}), country: ${country}`,
+    `[pipeline:test-selection] client: ${client.name} (${client.id}), country: ${country}, max ${maxCandidates} candidates`,
   );
 
   const { data: runRow, error: runError } = await supabase
@@ -39,7 +48,7 @@ async function main() {
       client_id: client.id,
       type: "creative_selection",
       status: "running",
-      input_json: { max_candidates: 10, country },
+      input_json: { max_candidates: maxCandidates, country },
       started_at: new Date().toISOString(),
     })
     .select("*")

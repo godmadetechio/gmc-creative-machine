@@ -27,6 +27,7 @@ const SOURCE_BADGE: Record<Competitor["source"], "default" | "secondary" | "outl
   manual: "default",
   agent: "secondary",
   bbm_research: "outline",
+  ad_library_discovery: "outline",
 };
 
 function StatusToggle({ competitor }: { competitor: Competitor }) {
@@ -129,7 +130,9 @@ export function CompetitorsCard({
                     <Badge variant={SOURCE_BADGE[competitor.source]}>
                       {competitor.source === "bbm_research"
                         ? "BBM research"
-                        : competitor.source}
+                        : competitor.source === "ad_library_discovery"
+                          ? "discovered"
+                          : competitor.source}
                     </Badge>
                   </TableCell>
                   <TableCell className="text-muted-foreground max-w-72 truncate text-sm">

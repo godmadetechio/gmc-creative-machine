@@ -39,14 +39,21 @@ const PER_URL_CAP = 50;
 const SCORING_POOL = 120;
 const SCORE_BATCH_SIZE = 8;
 // The deriver only emits keyword targets now — roster pages are pulled
-// automatically in code.
-const MIN_KEYWORD_TARGETS = 3;
-const MAX_KEYWORD_TARGETS = 6;
+// automatically in code. Keywords double as advertiser discovery, so run a
+// wide spread of consumer-intent exact phrases.
+const MIN_KEYWORD_TARGETS = 8;
+const MAX_KEYWORD_TARGETS = 10;
+// A keyword phrase that returned zero results in this many past runs is
+// banned from future derivation (exact-phrase misses stay misses).
+const BAN_KEYWORD_AFTER_ZERO_RUNS = 2;
 // Scout until the roster has this many competitors with verified FB pages
 // (bounded rounds; a dry round ends the loop early).
 const TARGET_ROSTER_WITH_PAGES = 25;
 const MAX_SCOUT_ROUNDS = 3;
 const MAX_NEW_COMPETITORS = 10; // per scout round
+// With fewer than this many active ring-1 (direct) competitors, the scout
+// widens to ring-2: adjacent offers in the client's broader niche category.
+const MIN_RING1_BEFORE_RING2 = 15;
 const MAX_COMPETITOR_PAGE_TARGETS = 25;
 const MIN_COMPETITOR_CONFIDENCE = 3;
 // Pages that had no ads last pull are skipped until a re-check is due.
@@ -57,6 +64,9 @@ const PREFERRED_MIN_DAYS_RUNNING = 30;
 // ads, and at most 3 final candidates per advertiser.
 const MAX_POOL_PER_ADVERTISER = 5;
 const MAX_CANDIDATES_PER_ADVERTISER = 3;
+// Quality floor: never pad the queue with weak matches just to hit
+// max_candidates — report the shortfall instead.
+const MIN_CANDIDATE_SCORE = 45;
 
 export type CreativeSelectionResult = {
   candidateCount: number;
@@ -173,8 +183,20 @@ export async function runCreativeSelection(
   ) {
     scoutRounds += 1;
     const roster = [...existingCompetitors, ...addedCompetitors];
+    // Ring-2 kicks in when the direct roster is thin. Ring is tagged via a
+    // "Ring 2:" prefix on positioning_notes (no dedicated column); rows
+    // without the prefix (manual entries, older scouts) count as ring-1.
+    const ring1Count = roster.filter(
+      (c) =>
+        c.status === "active" &&
+        !(c.positioning_notes ?? "").toLowerCase().startsWith("ring 2"),
+    ).length;
+    const ringGuidance =
+      ring1Count < MIN_RING1_BEFORE_RING2
+        ? `The direct-competitor roster is thin (${ring1Count} active ring-1) — ALSO scout ring-2: adjacent offers in the client's broader niche category serving overlapping buyers (e.g. for fat-loss coaching for professionals, ring-2 = online body-transformation / macro / online-PT coaching in general). Tag those "Ring 2:".`
+        : `The direct roster is healthy (${ring1Count} active ring-1) — stick to ring-1 (direct) competitors this round.`;
     console.log(
-      `[creative_selection] scout round ${scoutRounds}: ${activeWithPages(roster)}/${TARGET_ROSTER_WITH_PAGES} competitors with pages…`,
+      `[creative_selection] scout round ${scoutRounds}: ${activeWithPages(roster)}/${TARGET_ROSTER_WITH_PAGES} with pages, ${ring1Count} ring-1…`,
     );
 
     let roundScouted: ScoutedCompetitor[];
@@ -185,6 +207,7 @@ export async function runCreativeSelection(
           max_new: MAX_NEW_COMPETITORS,
           target_roster: TARGET_ROSTER_WITH_PAGES,
           current_with_pages: activeWithPages(roster),
+          ring_guidance: ringGuidance,
           existing_competitors_json: roster.length
             ? JSON.stringify(
                 roster.map((c) => ({
@@ -321,6 +344,42 @@ export async function runCreativeSelection(
   }));
 
   // ── 1. Derive keyword discovery targets from the BBM ───────────────────
+  // Exact-phrase queries that returned zero results in enough past runs are
+  // banned — a phrase real ads don't contain stays a miss. Past keyword
+  // performance lives in each run's output_json.apify.per_url_counts.
+  const { data: pastRunRows, error: pastRunsError } = await supabase
+    .from("runs")
+    .select("output_json")
+    .eq("client_id", clientId)
+    .eq("type", "creative_selection")
+    .in("status", ["needs_review", "approved"])
+    .order("created_at", { ascending: false })
+    .limit(10);
+  if (pastRunsError) {
+    warnings.push(`failed to load past runs for keyword history: ${pastRunsError.message}`);
+  }
+  const zeroRunsByPhrase = new Map<string, number>();
+  for (const row of pastRunRows ?? []) {
+    const counts = (row.output_json as { apify?: { per_url_counts?: Record<string, number> } })
+      ?.apify?.per_url_counts;
+    if (!counts) continue;
+    for (const [label, count] of Object.entries(counts)) {
+      if (!label.startsWith("keyword:") || count !== 0) continue;
+      const phrase = label.slice("keyword:".length).trim().toLowerCase();
+      zeroRunsByPhrase.set(phrase, (zeroRunsByPhrase.get(phrase) ?? 0) + 1);
+    }
+  }
+  const bannedKeywords = new Set(
+    [...zeroRunsByPhrase.entries()]
+      .filter(([, zeros]) => zeros >= BAN_KEYWORD_AFTER_ZERO_RUNS)
+      .map(([phrase]) => phrase),
+  );
+  if (bannedKeywords.size > 0) {
+    console.log(
+      `[creative_selection] banned keywords (0 results in ${BAN_KEYWORD_AFTER_ZERO_RUNS}+ runs): ${[...bannedKeywords].join(", ")}`,
+    );
+  }
+
   console.log(
     `[creative_selection] deriving keyword targets from BBM v${bbmVersion.version} (${competitorPageTargets.length} page pulls queued)…`,
   );
@@ -332,6 +391,9 @@ export async function runCreativeSelection(
         min_targets: MIN_KEYWORD_TARGETS,
         max_targets: MAX_KEYWORD_TARGETS,
         per_url_cap: PER_URL_CAP,
+        banned_keywords: bannedKeywords.size
+          ? [...bannedKeywords].join("; ")
+          : "none yet",
         competitors_json: activeCompetitors.length
           ? JSON.stringify(
               activeCompetitors.map((c) => ({
@@ -379,6 +441,12 @@ export async function runCreativeSelection(
     const key = normalizeTargetValue(target.value);
     if (seenValues.has(key)) continue;
     if (target.kind === "keyword") {
+      if (bannedKeywords.has(target.value.trim().toLowerCase())) {
+        warnings.push(
+          `keyword "${target.value}" is banned (0 results in ${BAN_KEYWORD_AFTER_ZERO_RUNS}+ past runs) — dropped`,
+        );
+        continue;
+      }
       if (keywordCount >= MAX_KEYWORD_TARGETS) continue;
       keywordCount += 1;
     }
@@ -416,6 +484,8 @@ export async function runCreativeSelection(
 
   const perUrlCounts: Record<string, number> = {};
   const allAds: NormalizedAd[] = [];
+  // ads that came from keyword searches feed the advertiser discovery loop
+  const keywordAds: { ad: NormalizedAd; via: string }[] = [];
   // per-target normalized counts, to update competitor ad_status below
   // (null = scrape errored, so the page's status stays unknown)
   const normalizedPerTarget: (number | null)[] = [];
@@ -430,6 +500,11 @@ export async function runCreativeSelection(
       });
       normalizedPerTarget.push(normalized.length);
       allAds.push(...normalized);
+      if (target.kind === "keyword") {
+        for (const ad of normalized) {
+          keywordAds.push({ ad, via: target.value });
+        }
+      }
     } else {
       perUrlCounts[label] = 0;
       normalizedPerTarget.push(null);
@@ -460,6 +535,60 @@ export async function runCreativeSelection(
       warnings.push(
         `failed to update ad_status for competitor ${competitor.name}: ${adStatusError.message}`,
       );
+    }
+  }
+
+  // ── 2b. Advertiser discovery loop ───────────────────────────────────────
+  // Keyword searches are the best source of advertisers the scout never
+  // found. Any keyword-discovered advertiser with an ad running >= 30 days
+  // is auto-registered as a competitor so future runs pull its full page.
+  const discoveredByKey = new Map<
+    string,
+    { name: string; via: string; ads: NormalizedAd[] }
+  >();
+  for (const { ad, via } of keywordAds) {
+    if (!ad.advertiser) continue;
+    const key = ad.advertiser.trim().toLowerCase();
+    if (knownNames.has(key)) continue;
+    const entry = discoveredByKey.get(key);
+    if (entry) entry.ads.push(ad);
+    else discoveredByKey.set(key, { name: ad.advertiser.trim(), via, ads: [ad] });
+  }
+  const discoveredCompetitors = [...discoveredByKey.values()]
+    .map((d) => ({
+      ...d,
+      longestDays: Math.max(...d.ads.map((ad) => ad.days_running ?? -1)),
+      pageUrl:
+        d.ads
+          .map((ad) => ad.page_profile_uri)
+          .find((url) => url && isValidFacebookPageUrl(url)) ?? null,
+    }))
+    .filter((d) => d.longestDays >= PREFERRED_MIN_DAYS_RUNNING);
+  if (discoveredCompetitors.length > 0) {
+    const { error: discoveryError } = await supabase.from("competitors").insert(
+      discoveredCompetitors.map((d) => ({
+        client_id: clientId,
+        name: d.name,
+        fb_page_url: d.pageUrl,
+        positioning_notes: `Ring: discovered — via Ad Library keyword "${d.via}"; ${d.ads.length} ad(s) in results, longest running ${d.longestDays}d`,
+        source: "ad_library_discovery",
+        status: "active",
+        // they demonstrably run ads right now
+        ad_status: "active",
+        last_checked: checkedAt,
+      })),
+    );
+    if (discoveryError) {
+      warnings.push(
+        `failed to register ${discoveredCompetitors.length} discovered advertisers: ${discoveryError.message}`,
+      );
+    } else {
+      for (const d of discoveredCompetitors) {
+        knownNames.add(d.name.toLowerCase());
+        console.log(
+          `[creative_selection] discovered advertiser registered: ${d.name} (via "${d.via}", longest ${d.longestDays}d${d.pageUrl ? "" : ", no page url"})`,
+        );
+      }
     }
   }
 
@@ -568,19 +697,30 @@ export async function runCreativeSelection(
     );
   }
 
-  // ── 5. Top N → ad_candidates (diversity-capped per advertiser) ─────────
+  // ── 5. Top N → ad_candidates (diversity-capped, quality-floored) ───────
+  // The floor beats the count: a queue is never padded with sub-45 matches
+  // just to reach max_candidates — the shortfall is reported instead.
   const rankedByScore = scored
     .map((ad) => ({ ad, score: scoreById.get(ad.ad_id)! }))
     .sort((a, b) => b.score.score - a.score.score);
+  const belowFloor = rankedByScore.filter(
+    (entry) => entry.score.score < MIN_CANDIDATE_SCORE,
+  ).length;
   const candidatesByAdvertiser = new Map<string, number>();
   const top: typeof rankedByScore = [];
   for (const entry of rankedByScore) {
+    if (entry.score.score < MIN_CANDIDATE_SCORE) break; // sorted — rest is below
     const key = advertiserKey(entry.ad);
     const count = candidatesByAdvertiser.get(key) ?? 0;
     if (count >= MAX_CANDIDATES_PER_ADVERTISER) continue;
     candidatesByAdvertiser.set(key, count + 1);
     top.push(entry);
     if (top.length >= input.max_candidates) break;
+  }
+  if (top.length < input.max_candidates) {
+    console.log(
+      `[creative_selection] queue shortfall: ${top.length}/${input.max_candidates} candidates (${belowFloor} scored ads below the ${MIN_CANDIDATE_SCORE} floor)`,
+    );
   }
 
   const { data: insertedRows, error: insertError } = await supabase
@@ -643,6 +783,9 @@ export async function runCreativeSelection(
       bbm_version: bbmVersion.version,
       candidate_count: insertedRows?.length ?? top.length,
       candidate_advertisers: candidatesByAdvertiser.size,
+      quality_floor: MIN_CANDIDATE_SCORE,
+      shortfall: Math.max(0, input.max_candidates - top.length),
+      below_floor: belowFloor,
       superseded_previous: supersededCount,
       competitors: {
         on_file: existingCompetitors.length,
@@ -659,7 +802,14 @@ export async function runCreativeSelection(
         ]),
         page_targets: competitorPageTargets.length,
         skipped_not_running: skippedNotRunning.map((c) => c.name),
+        discovered: discoveredCompetitors.map((d) => ({
+          name: d.name,
+          via: d.via,
+          longest_days: d.longestDays,
+          fb_page_url: d.pageUrl,
+        })),
       },
+      banned_keywords: [...bannedKeywords],
       targets: targets.map((t) => ({ kind: t.kind, value: t.value })),
       scraped_raw: scrapedRaw,
       after_dedupe: deduped.length,
