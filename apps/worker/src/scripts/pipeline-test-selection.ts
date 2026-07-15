@@ -50,6 +50,30 @@ async function main() {
   const run = RunSchema.parse(runRow);
   console.log(`[pipeline:test-selection] run ${run.id} created`);
 
+  // Prints the client's competitors table (the scout writes it as step 0) —
+  // runs even when the pipeline fails so scout quality is always eyeballable.
+  async function printCompetitors() {
+    const { data: competitors, error: competitorsError } = await supabase
+      .from("competitors")
+      .select("name, source, status, fb_page_url, positioning_notes")
+      .eq("client_id", client!.id)
+      .order("created_at");
+    if (competitorsError) {
+      console.warn(
+        `[pipeline:test-selection] failed to list competitors: ${competitorsError.message}`,
+      );
+      return;
+    }
+    console.log(
+      `[pipeline:test-selection] competitors on file (${competitors?.length ?? 0}):`,
+    );
+    for (const c of competitors ?? []) {
+      console.log(
+        `  [${c.source}${c.status === "ignored" ? ", IGNORED" : ""}] ${c.name} — ${c.fb_page_url ?? "no FB page"}${c.positioning_notes ? ` — ${c.positioning_notes}` : ""}`,
+      );
+    }
+  }
+
   try {
     await pipelines.creative_selection({ supabase, run });
   } catch (err) {
@@ -63,8 +87,11 @@ async function main() {
         finished_at: new Date().toISOString(),
       })
       .eq("id", run.id);
+    await printCompetitors();
     throw err;
   }
+
+  await printCompetitors();
 
   const { data: finished } = await supabase
     .from("runs")

@@ -5,6 +5,10 @@ Operator notes: {{operator_prompt}}. Target ad country: {{country}}.
 Active Buyer Brain Matrix:
 {{bbm_json}}
 
+Active competitor roster (from the competitors table; confidence 1-5 —
+ignored competitors are already excluded):
+{{competitors_json}}
+
 Mission: produce {{min_targets}}-{{max_targets}} SEARCH TARGETS that will
 surface competitor ads whose angles map onto this BBM. Downstream, each
 target becomes an Ad Library pull (~{{per_url_cap}} active ads), and every
@@ -26,11 +30,16 @@ Two kinds of target:
   brand name as a keyword target instead.
 
 Composition rules:
-- Cover at least 3 different BBM entries across your targets (don't aim
-  everything at the loudest pain).
-- Include at least one belief/breaking-angle phrase and at least one
-  competitor target (keyword brand name or verified page_url).
-- No near-duplicate queries ("fat loss" + "lose fat" is one target).
+- You MUST include the fb_page_url of every roster competitor with
+  confidence >= 3 as a page_url target (highest-confidence first) — these
+  per-advertiser pulls are the backbone of the run. Roster URLs are already
+  verified; emit them as-is, don't re-search them. Fill the remaining slots
+  (cap: {{max_targets}} total) with keyword targets.
+- Cover at least 3 different BBM entries across your keyword targets
+  (don't aim everything at the loudest pain).
+- Include at least one belief/breaking-angle phrase.
+- No near-duplicate queries ("fat loss" + "lose fat" is one target), and
+  no keyword duplicating a roster competitor already pulled via page_url.
 
 For every target:
 - kind: "keyword" | "page_url"

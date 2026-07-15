@@ -77,7 +77,7 @@ async function main() {
   }
 
   const url = buildAdLibrarySearchUrl(query, country);
-  const input = buildActorInput(url, { perUrlCount: 10 });
+  const input = buildActorInput(url, { perUrlCount: 10, country });
   console.log(`[fbads:test] our input builder produces:`, JSON.stringify(input, null, 2));
   console.log(
     `[fbads:test] compare the two above — if fields differ, fix buildActorInput in src/fb-ads.ts`,
