@@ -5,6 +5,7 @@ import {
   BookOpenText,
   ExternalLink,
   GalleryVerticalEnd,
+  ImageIcon,
   Pencil,
 } from "lucide-react";
 import { z } from "zod";
@@ -149,6 +150,7 @@ export default async function ClientDetailPage({
     activeBbmResult,
     candidatesResult,
     competitorsResult,
+    assetsResult,
   ] = await Promise.all([
       supabase.from("clients").select("*").eq("id", id).maybeSingle(),
       supabase
@@ -182,6 +184,10 @@ export default async function ClientDetailPage({
         .eq("client_id", id)
         .order("status", { ascending: true })
         .order("created_at", { ascending: true }),
+      supabase
+        .from("client_assets")
+        .select("id", { count: "exact", head: true })
+        .eq("client_id", id),
     ]);
 
   if (!clientResult.data) notFound();
@@ -200,6 +206,7 @@ export default async function ClientDetailPage({
   const competitors = (competitorsResult.data ?? []).map((row) =>
     CompetitorSchema.parse(row),
   );
+  const assetCount = assetsResult.count ?? 0;
 
   const isActive = (run: RunRow) =>
     run.status === "queued" || run.status === "running";
@@ -262,6 +269,19 @@ export default async function ClientDetailPage({
           </CardContent>
         </Card>
       )}
+
+      <div className="mt-6 flex flex-wrap items-center gap-3">
+        <h2 className="text-lg font-semibold">Asset Library</h2>
+        <Button asChild variant="outline" size="sm">
+          <Link href={`/clients/${client.id}/assets`}>
+            <ImageIcon />
+            {assetCount > 0
+              ? `${assetCount} asset${assetCount === 1 ? "" : "s"}`
+              : "Upload assets"}
+            {client.brand_json && " · brand kit set"}
+          </Link>
+        </Button>
+      </div>
 
       <div className="mt-6 flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-3">

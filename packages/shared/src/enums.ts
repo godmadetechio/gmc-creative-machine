@@ -37,6 +37,18 @@ export type CreativeModel = z.infer<typeof CreativeModel>;
 export const CreativeStatus = z.enum(["draft", "approved", "rejected"]);
 export type CreativeStatus = z.infer<typeof CreativeStatus>;
 
+export const AssetKind = z.enum([
+  "owner_photo",
+  "logo",
+  "product_shot",
+  "lifestyle_photo",
+  "example_ad",
+  "inspiration_ad",
+  "testimonial_screenshot",
+  "brand_doc",
+]);
+export type AssetKind = z.infer<typeof AssetKind>;
+
 export const CompetitorSource = z.enum([
   "agent",
   "manual",

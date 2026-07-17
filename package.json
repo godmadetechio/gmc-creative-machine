@@ -8,6 +8,7 @@
     "pipeline:test": "pnpm --filter worker pipeline:test",
     "pipeline:test-selection": "pnpm --filter worker pipeline:test-selection",
     "format:scan": "pnpm --filter worker format:scan",
+    "assets:backfill": "pnpm --filter worker assets:backfill",
     "build": "pnpm -r build",
     "lint": "pnpm -r lint",
     "typecheck": "pnpm -r typecheck"

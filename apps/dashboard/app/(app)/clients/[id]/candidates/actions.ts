@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { after } from "next/server";
 import { z } from "zod";
+import { inspirationAssetsForCandidate } from "@gmc/shared";
 import { mirrorCandidateMedia, type MirrorableCandidate } from "@/lib/media-mirror";
 import { createClient } from "@/lib/supabase/server";
 
@@ -46,19 +47,40 @@ export async function reviewCandidate(
       reviewed_by: reviewed ? (user?.email ?? null) : null,
     })
     .eq("id", candidate_id)
-    .select("id, client_id, media_urls, media_storage_paths")
+    .select(
+      "id, client_id, advertiser, match_score, match_rationale_json, media_urls, media_storage_paths",
+    )
     .single();
   if (error) {
     return { status: "error", message: error.message };
   }
 
   // fbcdn media URLs expire — mirror a winner's files to Storage right away,
-  // after the response so the review click stays snappy. Warn-don't-fail.
+  // after the response so the review click stays snappy, then register them
+  // in the Client Asset Library as inspiration_ad references for Phase 3/4.
+  // Warn-don't-fail throughout.
   if (decision === "selected" && updated) {
-    const candidate = updated as MirrorableCandidate;
+    const candidate = updated as MirrorableCandidate & {
+      advertiser: string | null;
+      match_score: number | null;
+      match_rationale_json: unknown;
+    };
     after(async () => {
       try {
-        await mirrorCandidateMedia(supabase, candidate);
+        const mirrored = await mirrorCandidateMedia(supabase, candidate);
+        const assetRows = inspirationAssetsForCandidate({
+          ...candidate,
+          media_storage_paths: mirrored,
+        });
+        if (assetRows.length === 0) return;
+        const { error: assetError } = await supabase
+          .from("client_assets")
+          .upsert(assetRows, { onConflict: "bucket,storage_path" });
+        if (assetError) {
+          console.warn(
+            `[assets] candidate ${candidate.id}: failed to register inspiration assets: ${assetError.message}`,
+          );
+        }
       } catch (err) {
         console.warn(
           `[media-mirror] candidate ${candidate.id}: mirroring crashed: ${
@@ -69,7 +91,23 @@ export async function reviewCandidate(
     });
   }
 
+  // Un-selecting (undo or reject) retires the auto-registered inspiration
+  // assets so Phase 3/4 stops referencing an ad the operator walked back.
+  // The mirrored files stay in ad-media for the candidates review page.
+  if (decision !== "selected") {
+    const { error: assetError } = await supabase
+      .from("client_assets")
+      .delete()
+      .eq("source_candidate_id", candidate_id);
+    if (assetError) {
+      console.warn(
+        `[assets] candidate ${candidate_id}: failed to remove inspiration assets: ${assetError.message}`,
+      );
+    }
+  }
+
   revalidatePath(`/clients/${client_id}/candidates`);
   revalidatePath(`/clients/${client_id}`);
+  revalidatePath(`/clients/${client_id}/assets`);
   return { status: "success" };
 }
