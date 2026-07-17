@@ -3,5 +3,6 @@ export * from "./client";
 export * from "./run";
 export * from "./bbm";
 export * from "./creative-selection";
+export * from "./asset";
 export * from "./competitor";
 export * from "./format-library";

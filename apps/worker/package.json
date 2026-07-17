@@ -9,6 +9,7 @@
     "pipeline:test": "tsx src/scripts/pipeline-test.ts",
     "pipeline:test-selection": "tsx src/scripts/pipeline-test-selection.ts",
     "format:scan": "tsx src/scripts/format-scan-test.ts",
+    "assets:backfill": "tsx src/scripts/backfill-inspiration-assets.ts",
     "reddit:test": "tsx src/scripts/reddit-tool-test.ts",
     "fbads:test": "tsx src/scripts/fbads-tool-test.ts",
     "typecheck": "tsc --noEmit"

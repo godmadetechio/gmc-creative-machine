@@ -1,12 +1,12 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import type { MirroredMedia } from "@gmc/shared";
+import { AD_MEDIA_BUCKET, type MirroredMedia } from "@gmc/shared";
 
 // fbcdn media URLs are signed and expire after a while. When a candidate is
 // selected, its media is downloaded into Supabase Storage right then so the
 // files still exist when Phase 3 wants them as style references. Every step
 // warns instead of failing — a broken mirror must never break the review.
 
-export const AD_MEDIA_BUCKET = "ad-media";
+export { AD_MEDIA_BUCKET };
 
 const FETCH_TIMEOUT_MS = 30_000;
 // Supabase Storage's default per-file limit is 50MB; skip anything bigger.
@@ -41,15 +41,17 @@ export function storagePublicUrl(supabaseUrl: string, path: string): string {
 
 // Idempotent: already-mirrored source URLs are skipped, and storage paths are
 // derived from the media_urls index so a re-run overwrites rather than piles up.
+// Returns the candidate's full mirrored-media list (old + new) so callers can
+// register the files elsewhere (e.g. as inspiration_ad client assets).
 export async function mirrorCandidateMedia(
   supabase: SupabaseClient,
   candidate: MirrorableCandidate,
-): Promise<void> {
+): Promise<MirroredMedia[]> {
   const mediaUrls = candidate.media_urls ?? [];
   const existing = candidate.media_storage_paths ?? [];
   const alreadyMirrored = new Set(existing.map((m) => m.source_url));
   const targets = mediaUrls.filter((url) => !alreadyMirrored.has(url));
-  if (targets.length === 0) return;
+  if (targets.length === 0) return existing;
 
   const mirrored: MirroredMedia[] = [...existing];
   for (const url of targets) {
@@ -86,7 +88,7 @@ export async function mirrorCandidateMedia(
     console.warn(
       `[media-mirror] candidate ${candidate.id}: 0/${targets.length} files mirrored — media may already be expired`,
     );
-    return;
+    return existing;
   }
 
   const { error } = await supabase
@@ -97,9 +99,10 @@ export async function mirrorCandidateMedia(
     console.warn(
       `[media-mirror] candidate ${candidate.id}: files uploaded but failed to record paths: ${error.message}`,
     );
-    return;
+    return mirrored;
   }
   console.log(
     `[media-mirror] candidate ${candidate.id}: mirrored ${mirrored.length - existing.length}/${targets.length} files`,
   );
+  return mirrored;
 }

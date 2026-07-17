@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { BrandKitSchema } from "./asset";
 
 export const ClientSchema = z.object({
   id: z.string().uuid(),
@@ -7,6 +8,10 @@ export const ClientSchema = z.object({
   brief: z.string().nullable(),
   website: z.string().nullable(),
   drive_folder_id: z.string().nullable(),
+  // default(null) keeps rows readable if the Phase 2.5 migration lags a
+  // deploy; catch(null) degrades a malformed kit to "none" instead of
+  // crashing every page that parses the client.
+  brand_json: BrandKitSchema.nullable().catch(null).default(null),
   created_at: z.string(),
 });
 export type Client = z.infer<typeof ClientSchema>;
