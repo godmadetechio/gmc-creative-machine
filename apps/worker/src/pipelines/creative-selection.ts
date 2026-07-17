@@ -15,15 +15,15 @@ import {
   type SearchTarget,
 } from "@gmc/shared";
 import { withValidationRetry } from "../agent";
-import { callActor, getApifyToken } from "../apify";
+import { getApifyToken } from "../apify";
 import { CostTracker } from "../cost";
 import {
   FB_ADS_ACTOR_ID,
-  buildActorInput,
   buildAdLibrarySearchUrl,
   dedupeAds,
   formatHint,
   normalizeAds,
+  scrapeAdLibraryUrls,
   type NormalizedAd,
 } from "../fb-ads";
 import { loadPrompt } from "../prompts";
@@ -472,15 +472,18 @@ export async function runCreativeSelection(
       : target.value,
   );
 
-  const scrapeResults = await Promise.allSettled(
-    urls.map((url) =>
-      callActor<Record<string, unknown>>(
-        FB_ADS_ACTOR_ID,
-        buildActorInput(url, { perUrlCount: PER_URL_CAP, country: input.country }),
-        { token: apifyToken },
-      ),
-    ),
-  );
+  // Limited pool (5 in flight) with one retry for network flakes and
+  // flaky ADS_NOT_FOUND responses — same orchestration as the format scan.
+  const scrapeResults = await scrapeAdLibraryUrls(urls, {
+    token: apifyToken,
+    perUrlCount: PER_URL_CAP,
+    country: input.country,
+    onRetry: (url, reason) => {
+      const message = `scrape retry for ${url}: ${reason}`;
+      warnings.push(message);
+      console.warn(`[creative_selection] ${message}`);
+    },
+  });
 
   const perUrlCounts: Record<string, number> = {};
   const allAds: NormalizedAd[] = [];

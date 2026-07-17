@@ -10,14 +10,14 @@ import {
   type SeedVertical,
 } from "@gmc/shared";
 import { withValidationRetry } from "../agent";
-import { callActor, getApifyToken } from "../apify";
+import { getApifyToken } from "../apify";
 import { CostTracker } from "../cost";
 import {
   FB_ADS_ACTOR_ID,
-  buildActorInput,
   dedupeAds,
   formatHint,
   normalizeAds,
+  scrapeAdLibraryUrls,
   type NormalizedAd,
 } from "../fb-ads";
 import { seedLibraryIfEmpty } from "../format-library";
@@ -47,8 +47,6 @@ const FADE_AFTER_MISSED = 2;
 // The fading pass only runs when at least this share of advertisers
 // scraped successfully — an Apify outage must not fade the library.
 const MIN_HEALTHY_ADVERTISER_SHARE = 0.5;
-// Concurrent Apify actor runs per batch (plan concurrency limits).
-const SCRAPE_CONCURRENCY = 15;
 
 export type FormatScanResult = {
   costUsd: number;
@@ -164,29 +162,24 @@ export async function runFormatScan(
   }
 
   // ── 2. Scrape each advertiser's page (pay-per-result actor) ─────────────
-  // Chunked so a full 50-advertiser scan doesn't fire 50 simultaneous actor
-  // runs into an Apify plan's concurrency limit.
+  // scrapeAdLibraryUrls runs at most 5 actor runs in flight and retries
+  // network flakes and flaky ADS_NOT_FOUND responses once.
   console.log(
     `[format_scan] scraping ${advertisers.length} seed advertisers (limit ${input.limit_per_advertiser} each, country ${input.country})…`,
   );
-  const scrapeResults: PromiseSettledResult<Record<string, unknown>[]>[] = [];
-  for (let i = 0; i < advertisers.length; i += SCRAPE_CONCURRENCY) {
-    const chunk = advertisers.slice(i, i + SCRAPE_CONCURRENCY);
-    scrapeResults.push(
-      ...(await Promise.allSettled(
-        chunk.map((advertiser) =>
-          callActor<Record<string, unknown>>(
-            FB_ADS_ACTOR_ID,
-            buildActorInput(advertiser.fb_page_url, {
-              perUrlCount: input.limit_per_advertiser,
-              country: input.country,
-            }),
-            { token: apifyToken },
-          ),
-        ),
-      )),
-    );
-  }
+  const scrapeResults = await scrapeAdLibraryUrls(
+    advertisers.map((a) => a.fb_page_url),
+    {
+      token: apifyToken,
+      perUrlCount: input.limit_per_advertiser,
+      country: input.country,
+      onRetry: (url, reason) => {
+        const message = `scrape retry for ${url}: ${reason}`;
+        warnings.push(message);
+        console.warn(`[format_scan] ${message}`);
+      },
+    },
+  );
 
   const perAdvertiserCounts: Record<string, number | null> = {};
   const allAds: TaggedAd[] = [];

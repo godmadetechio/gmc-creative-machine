@@ -1,6 +1,8 @@
 // Facebook Ad Library access via curious_coder/facebook-ads-library-scraper
 // on Apify. The actor takes Ad Library URLs (keyword searches or facebook
 // page URLs), not raw keywords — the pipeline builds the URLs.
+
+import { callActor } from "./apify";
 //
 // Input shape verified against the live actor schema via
 // `pnpm --filter worker fbads:test`. Real fields: urls (required),
@@ -71,7 +73,7 @@ export type NormalizedAd = {
   duplicate_count: number;
 };
 
-type RawItem = Record<string, unknown>;
+export type RawItem = Record<string, unknown>;
 
 function str(value: unknown): string {
   if (typeof value === "string") return value;
@@ -258,6 +260,42 @@ export function isNoAdsStatus(item: RawItem): boolean {
   return code === null && "pageInfo" in item;
 }
 
+// An item carrying real ad payload is an ad, never a status row — the
+// run+poll fallback path returned ad items that ALSO carried a pageInfo
+// key (and per-ad error fields under actor saturation), and a key-presence
+// classifier discarded whole pages of real ads as "status items".
+export function hasAdPayload(item: RawItem): boolean {
+  return (
+    "snapshot" in item ||
+    item.ad_archive_id != null ||
+    item.adArchiveID != null ||
+    item.adArchiveId != null
+  );
+}
+
+// The pageInfo status row states the page's own ad status, e.g. "This
+// Page is currently running ads" — the negated wording must not match.
+export function pageSaysRunningAds(items: RawItem[]): boolean {
+  return items.some((item) => {
+    const info = item.pageInfo;
+    if (info == null) return false;
+    const text = JSON.stringify(info);
+    return (
+      /currently running ads/i.test(text) &&
+      !/not\s+currently\s+running/i.test(text)
+    );
+  });
+}
+
+// Actor flakiness observed live (Huel, Simplilearn): ADS_NOT_FOUND while
+// the same response's pageInfo says the page IS running ads.
+export function isFlakyNoAds(items: RawItem[]): boolean {
+  return (
+    items.some((item) => adErrorCode(item) === NO_ADS_CODE) &&
+    pageSaysRunningAds(items)
+  );
+}
+
 // Same convention as reddit-tools (the "reddit fix"): count what came in vs
 // what survived. Status items get an accurate "no ads" info warning; only a
 // genuine everything-lost-to-field-mapping case gets the mismatch warning
@@ -266,8 +304,11 @@ export function normalizeAds(
   items: RawItem[],
   { label, onWarning }: { label: string; onWarning?: (message: string) => void },
 ): NormalizedAd[] {
+  // Payload wins: an item with real ad fields is an ad even when it also
+  // carries pageInfo or a per-ad error key (the run+poll fallback returns
+  // such items — a presence-only classifier once discarded whole pages).
   const isStatus = (item: RawItem) =>
-    adErrorCode(item) !== null || "pageInfo" in item;
+    !hasAdPayload(item) && (adErrorCode(item) !== null || "pageInfo" in item);
   const statusItems = items.filter(isStatus);
   const adItems = items.filter((item) => !isStatus(item));
   const noAdsItems = statusItems.filter(isNoAdsStatus);
@@ -280,18 +321,42 @@ export function normalizeAds(
       statusItems.length > 0 ? ` (${statusItems.length} status items)` : ""
     }`,
   );
-  // Real actor errors surface verbatim, whatever else the batch contained.
-  for (const item of actorErrors) {
-    const message = `fb_ads ${label}: actor error — ${truncate(JSON.stringify(item), 300)}`;
+  // Tripwire: mostly-status batches from a page that says it IS running
+  // ads are a shape bug (or actor flakiness), never "not running ads" —
+  // log a raw sample so the actual shape is diagnosable from run warnings.
+  const shapeBugSuspected =
+    items.length > 0 &&
+    statusItems.length / items.length > 0.8 &&
+    pageSaysRunningAds(items);
+  if (shapeBugSuspected) {
+    const message = `fb_ads ${label}: ${statusItems.length}/${items.length} raw items classified as status rows on a page whose pageInfo says ads ARE running — suspected item-shape bug or actor flakiness, NOT "not running ads"; raw sample: ${truncate(JSON.stringify(items[0]), 600)}`;
     console.warn(`[fb_ads] ${message}`);
     onWarning?.(message);
   }
-  if (normalized.length === 0 && noAdsItems.length > 0 && actorErrors.length === 0) {
+  // Real actor errors surface verbatim, whatever else the batch contained —
+  // deduped: saturation once produced dozens of identical per-item errors.
+  const errorCounts = new Map<string, number>();
+  for (const item of actorErrors) {
+    const key = truncate(JSON.stringify(item), 300);
+    errorCounts.set(key, (errorCounts.get(key) ?? 0) + 1);
+  }
+  for (const [sample, count] of errorCounts) {
+    const message = `fb_ads ${label}: actor error${count > 1 ? ` (x${count})` : ""} — ${sample}`;
+    console.warn(`[fb_ads] ${message}`);
+    onWarning?.(message);
+  }
+  if (
+    !shapeBugSuspected &&
+    normalized.length === 0 &&
+    noAdsItems.length > 0 &&
+    actorErrors.length === 0
+  ) {
     const what = label.startsWith("page_url")
       ? "page is not running ads"
       : "no results for query";
     const message = `fb_ads ${label}: no ads returned (actor reported ${
-      adErrorCode(noAdsItems[0]!) ?? "a page status row with no ads"
+      noAdsItems.map(adErrorCode).find((code) => code !== null) ??
+      "a page status row with no ads"
     }) — ${what}`;
     console.log(`[fb_ads] ${message}`);
     onWarning?.(message);
@@ -368,4 +433,89 @@ export function dedupeAds<T extends NormalizedAd>(ads: T[]): T[] {
     { sumCounts: true },
   );
   return collapse(byCollation, copyKey, { sumCounts: true });
+}
+
+// ── Shared scrape orchestration ──────────────────────────────────────────
+// A full format scan launched 90 simultaneous actor runs into the Apify
+// account's concurrency/memory caps: 16 sync timeouts + 12 outright fetch
+// failures. All Ad Library scraping now goes through this limited pool.
+
+const SCRAPE_CONCURRENCY = 5;
+const SCRAPE_RETRY_BACKOFF_MS = 2000;
+// undici's generic "fetch failed" plus the usual network-level causes.
+const RETRYABLE_NETWORK_RE =
+  /fetch failed|ECONNRESET|ECONNREFUSED|ETIMEDOUT|socket hang up|UND_ERR|other side closed/i;
+
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+export type ScrapeResult =
+  | { status: "fulfilled"; value: RawItem[] }
+  | { status: "rejected"; reason: unknown };
+
+// Scrapes each URL through the actor with at most SCRAPE_CONCURRENCY runs
+// in flight. Retries once (short backoff) on network-level failures and on
+// the flaky ADS_NOT_FOUND-while-page-says-running response. Results are
+// index-aligned with `urls`, in Promise.allSettled shape.
+export async function scrapeAdLibraryUrls(
+  urls: string[],
+  opts: {
+    token: string;
+    perUrlCount: number;
+    country?: string;
+    onRetry?: (url: string, reason: string) => void;
+  },
+): Promise<ScrapeResult[]> {
+  const { token, perUrlCount, country, onRetry } = opts;
+
+  async function scrapeOne(url: string): Promise<RawItem[]> {
+    const run = () =>
+      callActor<RawItem>(
+        FB_ADS_ACTOR_ID,
+        buildActorInput(url, { perUrlCount, country }),
+        { token },
+      );
+
+    let items: RawItem[];
+    try {
+      items = await run();
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      if (!RETRYABLE_NETWORK_RE.test(message)) throw err;
+      onRetry?.(url, `network failure, retrying once: ${truncate(message, 200)}`);
+      await sleep(SCRAPE_RETRY_BACKOFF_MS);
+      items = await run();
+    }
+
+    if (isFlakyNoAds(items)) {
+      onRetry?.(
+        url,
+        "actor reported ADS_NOT_FOUND but pageInfo says the page IS running ads — retrying once",
+      );
+      await sleep(SCRAPE_RETRY_BACKOFF_MS);
+      try {
+        const retried = await run();
+        if (!isFlakyNoAds(retried)) return retried;
+      } catch {
+        // keep the first response — a flaky no-ads beats a thrown retry
+      }
+    }
+    return items;
+  }
+
+  const results: ScrapeResult[] = new Array(urls.length);
+  let cursor = 0;
+  await Promise.all(
+    Array.from({ length: Math.min(SCRAPE_CONCURRENCY, urls.length) }, async () => {
+      for (;;) {
+        const i = cursor++;
+        if (i >= urls.length) return;
+        try {
+          results[i] = { status: "fulfilled", value: await scrapeOne(urls[i]!) };
+        } catch (reason) {
+          results[i] = { status: "rejected", reason };
+        }
+      }
+    }),
+  );
+  return results;
 }
