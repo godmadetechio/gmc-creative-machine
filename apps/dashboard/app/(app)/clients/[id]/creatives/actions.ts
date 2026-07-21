@@ -7,7 +7,7 @@ import { createClient } from "@/lib/supabase/server";
 
 export type CreativeReviewState =
   | { status: "error"; message: string }
-  | { status: "success" }
+  | { status: "success"; message?: string }
   | null;
 
 const ApproveInputSchema = z.object({
@@ -63,7 +63,6 @@ export async function approveCreative(
     };
   }
 
-  revalidatePath(`/clients/${client_id}/creatives`);
   revalidatePath(`/clients/${client_id}`);
   return { status: "success" };
 }
@@ -108,9 +107,78 @@ export async function rejectCreative(
   // A rejected creative can't stay in the Winning Doc (approve → reject flip).
   await supabase.from("winning_creatives").delete().eq("creative_id", creative_id);
 
-  revalidatePath(`/clients/${client_id}/creatives`);
   revalidatePath(`/clients/${client_id}`);
   return { status: "success" };
+}
+
+const RetryInputSchema = z.object({
+  creative_id: z.string().uuid(),
+  client_id: z.string().uuid(),
+});
+
+// "Retry with feedback" — enqueue a cheap single-image creative_regen run
+// (background job, per the house rule) that re-runs just this creative's
+// generation with the rejection feedback appended to its compiled prompt.
+// Salvages near-misses without a full still_ads round.
+export async function retryRejectedCreative(
+  _prevState: CreativeReviewState,
+  formData: FormData,
+): Promise<CreativeReviewState> {
+  const parsed = RetryInputSchema.safeParse({
+    creative_id: formData.get("creative_id"),
+    client_id: formData.get("client_id"),
+  });
+  if (!parsed.success) {
+    return { status: "error", message: "Invalid input" };
+  }
+  const { creative_id, client_id } = parsed.data;
+
+  const supabase = await createClient();
+  const { data: creative, error: fetchError } = await supabase
+    .from("creatives")
+    .select("status, feedback, prompt_used")
+    .eq("id", creative_id)
+    .eq("client_id", client_id)
+    .maybeSingle();
+  if (fetchError) return { status: "error", message: fetchError.message };
+  if (!creative) return { status: "error", message: "Creative not found" };
+  if (creative.status !== "rejected" || !creative.feedback) {
+    return {
+      status: "error",
+      message: "Only rejected creatives with feedback can be retried.",
+    };
+  }
+  if (!creative.prompt_used) {
+    return { status: "error", message: "Creative has no stored prompt to retry." };
+  }
+
+  const { data: active, error: activeError } = await supabase
+    .from("runs")
+    .select("id")
+    .eq("client_id", client_id)
+    .eq("type", "creative_regen")
+    .in("status", ["queued", "running"])
+    .eq("input_json->>creative_id", creative_id)
+    .limit(1);
+  if (activeError) return { status: "error", message: activeError.message };
+  if (active && active.length > 0) {
+    return { status: "error", message: "A retry is already queued for this creative." };
+  }
+
+  const { error } = await supabase.from("runs").insert({
+    client_id,
+    type: "creative_regen",
+    status: "queued",
+    input_json: { creative_id, feedback: creative.feedback },
+  });
+  if (error) return { status: "error", message: error.message };
+
+  revalidatePath(`/clients/${client_id}`);
+  revalidatePath("/runs");
+  return {
+    status: "success",
+    message: "Retry queued — the revised draft will appear with the next run.",
+  };
 }
 
 const UndoInputSchema = z.object({
@@ -143,7 +211,6 @@ export async function undoCreativeReview(
   }
   await supabase.from("winning_creatives").delete().eq("creative_id", creative_id);
 
-  revalidatePath(`/clients/${client_id}/creatives`);
   revalidatePath(`/clients/${client_id}`);
   return { status: "success" };
 }

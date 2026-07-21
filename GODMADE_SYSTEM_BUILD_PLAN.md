@@ -185,6 +185,15 @@ INPUT: { selected ads (winners), BBM, operator_prompt, feedback history }
 
 Also from your diagram: approved winners get logged into a **Winning Creative Doc** per client (a living document of what worked — the composer references it in future rounds).
 
+### Format reliability strategy (round-two learnings)
+
+Generation reliability differs sharply by format class, and the pipeline is weighted accordingly:
+
+- **Text-native formats** (iPhone Notes, Sticky Note, Us vs Them, Bold Claim, Testimonial Card, checkmark/numbered lists) generate reliably — they carry **~60-70% of the default concept mix** (encoded in `concept-agent.md`; the worker warns when a batch drifts past 40% photo-compositing).
+- **Photo-compositing concepts** (identity/product reference modes, identity especially) are higher-risk: the worker compiles **extra variants for them (4-5 vs 3)** so post-attrition yield matches the text-native concepts.
+- **Identity mode is conservative**: prompts preserve the client's real photo as shot and compose text/graphics around or over it via the edit endpoint — re-rendering a real face into a new scene is where visible flaws come from (encoded in `image-compiler.md`).
+- **Retry with feedback**: a rejected creative can be re-queued as a cheap single-image `creative_regen` run (retry mode) with the rejection feedback appended to its compiled prompt — salvages near-misses without a full round.
+
 ### The Client Asset Library (feeds Steps 2 & 3)
 
 Pure text-to-image ads are the floor, not the ceiling. The generation agents get dramatically better when every client has a curated asset library the prompt compiler can pull from:

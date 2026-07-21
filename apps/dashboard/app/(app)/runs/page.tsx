@@ -13,18 +13,25 @@ import {
   RUN_TYPE_LABELS,
   RunStatusBadge,
 } from "@/components/run-status-badge";
+import { PaginationBar } from "@/components/pagination-bar";
+import { parsePageParams } from "@/lib/pagination";
 import { createClient } from "@/lib/supabase/server";
 
 const RunRowSchema = z.object({
   id: z.string().uuid(),
   type: RunType,
   status: RunStatus,
+  stage: z.string().nullable().optional(),
   cost_usd: z.number().nullable(),
   started_at: z.string().nullable(),
   finished_at: z.string().nullable(),
   created_at: z.string(),
   clients: z.object({ name: z.string() }).nullable(),
 });
+
+// Mirrors the worker-offline banner threshold: queued this long with no
+// pickup usually means the worker is down.
+const STUCK_QUEUED_MS = 3 * 60 * 1000;
 
 const dateTimeFormat = new Intl.DateTimeFormat("en-GB", {
   dateStyle: "medium",
@@ -35,16 +42,27 @@ function formatTimestamp(value: string | null) {
   return value ? dateTimeFormat.format(new Date(value)) : "—";
 }
 
-export default async function RunsPage() {
+export default async function RunsPage({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
+  const sp = await searchParams;
+  const { page, from, to } = parsePageParams(sp);
   const supabase = await createClient();
-  const { data, error } = await supabase
+  const { data, error, count } = await supabase
     .from("runs")
     .select(
-      "id, type, status, cost_usd, started_at, finished_at, created_at, clients (name)",
+      "id, type, status, stage, cost_usd, started_at, finished_at, created_at, clients (name)",
+      { count: "exact" },
     )
-    .order("created_at", { ascending: false });
+    .order("created_at", { ascending: false })
+    .range(from, to);
 
   const runs = (data ?? []).map((row) => RunRowSchema.parse(row));
+  const totalCount = count ?? runs.length;
+  const makeHref = (nextPage: number) =>
+    nextPage > 1 ? `/runs?page=${nextPage}` : "/runs";
 
   return (
     <div>
@@ -89,7 +107,18 @@ export default async function RunsPage() {
                     </TableCell>
                     <TableCell>{RUN_TYPE_LABELS[run.type]}</TableCell>
                     <TableCell>
-                      <RunStatusBadge status={run.status} />
+                      <div className="flex flex-col gap-1">
+                        <span>
+                          <RunStatusBadge status={run.status} stage={run.stage} />
+                        </span>
+                        {run.status === "queued" &&
+                          Date.now() - new Date(run.created_at).getTime() >
+                            STUCK_QUEUED_MS && (
+                            <span className="text-xs text-amber-500">
+                              stalled? queued &gt;3 min
+                            </span>
+                          )}
+                      </div>
                     </TableCell>
                     <TableCell className="text-muted-foreground">
                       {run.cost_usd != null
@@ -109,6 +138,14 @@ export default async function RunsPage() {
           </CardContent>
         </Card>
       )}
+      <div className="mt-4">
+        <PaginationBar
+          page={page}
+          totalCount={totalCount}
+          makeHref={makeHref}
+          label="runs"
+        />
+      </div>
     </div>
   );
 }

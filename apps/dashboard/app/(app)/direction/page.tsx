@@ -8,11 +8,11 @@ import {
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { getCompiledPreview } from "@/lib/directives";
+import { signMany } from "@/lib/storage";
 import { createClient } from "@/lib/supabase/server";
 import { BriefEditor, type PickerReference } from "./brief-editor";
 import { VersionHistory } from "./version-history";
 
-const SIGNED_URL_TTL_SECONDS = 60 * 60;
 const DEFAULT_VERTICAL = "coaching" as const;
 
 export default async function DirectionPage({
@@ -58,22 +58,15 @@ export default async function DirectionPage({
 
   // Reference picker thumbnails (signed, small grid).
   const refRows = referencesResult.data ?? [];
-  const urlByPath = new Map<string, string>();
-  if (refRows.length > 0) {
-    const { data: signed } = await supabase.storage
-      .from(REFERENCE_LIBRARY_BUCKET)
-      .createSignedUrls(
-        refRows.map((r) => r.storage_path),
-        SIGNED_URL_TTL_SECONDS,
-      );
-    for (const item of signed ?? []) {
-      if (item.path && item.signedUrl) urlByPath.set(item.path, item.signedUrl);
-    }
-  }
+  const signed = await signMany(
+    REFERENCE_LIBRARY_BUCKET,
+    refRows.map((r) => r.storage_path),
+    { thumbWidth: 320 },
+  );
   const pickerReferences: PickerReference[] = refRows.map((r) => ({
     id: r.id,
     title: r.title,
-    url: urlByPath.get(r.storage_path) ?? null,
+    url: signed.get(r.storage_path)?.thumbUrl ?? null,
   }));
 
   // Compiled preview for the selected client.

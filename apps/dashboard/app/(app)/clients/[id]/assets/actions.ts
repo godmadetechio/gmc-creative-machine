@@ -76,7 +76,6 @@ export async function registerAsset(
     }
   }
 
-  revalidatePath(`/clients/${client_id}/assets`);
   revalidatePath(`/clients/${client_id}`);
   return { status: "success" };
 }
@@ -134,7 +133,6 @@ export async function deleteAsset(
     return { status: "error", message: error.message };
   }
 
-  revalidatePath(`/clients/${client_id}/assets`);
   revalidatePath(`/clients/${client_id}`);
   return { status: "success" };
 }
@@ -220,7 +218,7 @@ export async function promoteAssetToLibrary(
   }
 
   revalidatePath("/swipe-file");
-  revalidatePath(`/clients/${client_id}/assets`);
+  revalidatePath(`/clients/${client_id}`);
   return { status: "success" };
 }
 
@@ -251,7 +249,6 @@ export async function saveBrandKit(
     return { status: "error", message: error.message };
   }
 
-  revalidatePath(`/clients/${client_id}/assets`);
   revalidatePath(`/clients/${client_id}`);
   return { status: "success" };
 }

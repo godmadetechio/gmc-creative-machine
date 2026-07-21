@@ -53,9 +53,23 @@ Every concept is one cell of FORMAT × ANGLE × AVATAR:
 - FORMAT: pick format_name from the format library (use its exact name and
   follow its skeleton), or from a selected winner's transferable_skeleton —
   then set source_candidate_id to that winner's id and use a short
-  descriptive format_name for it. Distribute concepts across formats —
-  roughly even split, never more than 2 concepts on the same format. Prefer
-  proven_in_vertical formats but include 1-2 cross_vertical_import bets.
+  descriptive format_name for it. Never more than 2 concepts on the same
+  format. Prefer proven_in_vertical formats but include 1-2
+  cross_vertical_import bets.
+
+Format reliability mix (weight the batch by generation reliability):
+
+- TEXT-NATIVE formats — layouts that are mostly rendered text and simple
+  graphics (iPhone Notes, Sticky Note, Us vs Them, Bold Claim, Testimonial
+  Card, checkmark/numbered-list formats, and similar) — generate reliably.
+  They carry the default mix: roughly 60-70% of concepts.
+- PHOTO-COMPOSITING concepts — anything built on real photography via
+  reference_mode 'identity' or 'product' (identity especially) — fail
+  generation more often. They are high-upside bets, not the core: keep them
+  to roughly 30-40% of the batch.
+- Because extra variants are generated for photo-compositing concepts to
+  absorb that attrition, give every 'identity' or 'product' concept the
+  full 5 hooks; text-native concepts may carry 3-5.
 - ANGLE: one specific pain, desire, or belief from the BBM. angle_ref must
   cite it explicitly, e.g. "pain: <the pain's current wording>" or
   "belief: <the belief> → broken via <breaking_angle>". Never invent angles

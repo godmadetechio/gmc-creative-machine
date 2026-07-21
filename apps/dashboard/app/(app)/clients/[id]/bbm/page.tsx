@@ -172,7 +172,7 @@ export default async function BbmViewerPage({
 function BackLink({ id, name }: { id: string; name: string }) {
   return (
     <Link
-      href={`/clients/${id}`}
+      href={`/clients/${id}?tab=research`}
       className="text-muted-foreground hover:text-foreground inline-flex items-center gap-1 text-sm"
     >
       <ArrowLeft className="size-3.5" />

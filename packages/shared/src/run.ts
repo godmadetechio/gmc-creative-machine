@@ -7,6 +7,10 @@ export const RunSchema = z.object({
   client_id: z.string().uuid().nullable(),
   type: RunType,
   status: RunStatus,
+  // Live pipeline stage slug, written additively mid-run by the worker.
+  // optional() keeps parsing deploy-order-proof (rows read before the
+  // migration applies simply lack the column).
+  stage: z.string().nullable().optional(),
   input_json: z.unknown().nullable(),
   output_json: z.unknown().nullable(),
   cost_usd: z.number().nullable(),

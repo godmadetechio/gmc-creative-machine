@@ -53,7 +53,7 @@ export async function enqueueBriefSuggestions(
     return { status: "error", message: error.message };
   }
 
-  revalidatePath(`/clients/${client_id}/brief`);
+  revalidatePath(`/clients/${client_id}`);
   revalidatePath("/runs");
   return { status: "success" };
 }
@@ -125,7 +125,6 @@ export async function acceptSuggestion(
     };
   }
 
-  revalidatePath(`/clients/${client_id}/brief`);
   revalidatePath(`/clients/${client_id}`);
   revalidatePath("/direction");
   return { status: "success" };
@@ -153,6 +152,6 @@ export async function dismissSuggestion(
     return { status: "error", message: error.message };
   }
 
-  revalidatePath(`/clients/${parsed.data.client_id}/brief`);
+  revalidatePath(`/clients/${parsed.data.client_id}`);
   return { status: "success" };
 }

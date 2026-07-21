@@ -1,312 +1,103 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import {
-  ArrowLeft,
-  BookOpenText,
-  ExternalLink,
-  GalleryVerticalEnd,
-  Compass,
-  GalleryHorizontalEnd,
-  ImageIcon,
-  Pencil,
-  Sparkles,
-} from "lucide-react";
+import { Suspense } from "react";
+import { ArrowLeft, ExternalLink, Pencil } from "lucide-react";
 import { z } from "zod";
-import {
-  AssetRequestSchema,
-  ClientSchema,
-  CompetitorSchema,
-  RunStatus,
-} from "@gmc/shared";
+import { ClientSchema } from "@gmc/shared";
 import { Button } from "@/components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
-import { RunStatusBadge } from "@/components/run-status-badge";
+import { RunWatcher } from "@/components/run-watcher";
 import { createClient } from "@/lib/supabase/server";
 import { ClientDialog } from "../client-dialog";
-import { AutoRefresh } from "@/components/auto-refresh";
-import { AssetRequestCard } from "./asset-request-card";
-import { CompetitorsCard } from "./competitors-card";
-import { CopyRequestsButton } from "./copy-requests-button";
-import { RunBuyerBrainButton } from "./run-buyer-brain-button";
-import { RunCreativeSelectionButton } from "./run-creative-selection-button";
-import { RunStillAdsButton } from "./run-still-ads-button";
+import {
+  ClientTabs,
+  parseClientTab,
+  type ClientTabCounts,
+} from "./client-tabs";
+import { TabSkeleton } from "./tab-skeleton";
+import { AssetsTab } from "./tabs/assets-tab";
+import { BriefTab } from "./tabs/brief-tab";
+import { CreativesTab } from "./tabs/creatives-tab";
+import { OverviewTab } from "./tabs/overview-tab";
+import { ResearchTab } from "./tabs/research-tab";
+import { SelectionTab } from "./tabs/selection-tab";
 
-const RunRowSchema = z.object({
-  id: z.string().uuid(),
-  type: z.string(),
-  status: RunStatus,
-  input_json: z.unknown().nullable(),
-  output_json: z.unknown().nullable(),
-  cost_usd: z.number().nullable(),
-  created_at: z.string(),
-  finished_at: z.string().nullable(),
-});
-type RunRow = z.infer<typeof RunRowSchema>;
+// Tab shell: awaits only the client row + cheap head-count queries (tab
+// label badges + refresh condition), then streams the active tab's async
+// section behind Suspense so tab switches feel instant.
 
-const dateTimeFormat = new Intl.DateTimeFormat("en-GB", {
-  dateStyle: "medium",
-  timeStyle: "short",
-});
-
-function runDepth(input: unknown): string {
-  const parsed = z.object({ depth: z.string() }).safeParse(input);
-  return parsed.success ? parsed.data.depth : "full";
-}
-
-function runCountry(input: unknown): string {
-  const parsed = z.object({ country: z.string() }).safeParse(input);
-  return parsed.success ? parsed.data.country : "US";
-}
-
-function runError(output: unknown): string | null {
-  const parsed = z.object({ error: z.string() }).safeParse(output);
-  return parsed.success ? parsed.data.error : null;
-}
-
-function runCandidateCount(output: unknown): number | null {
-  const parsed = z.object({ candidate_count: z.number() }).safeParse(output);
-  return parsed.success ? parsed.data.candidate_count : null;
-}
-
-function runCreativeCount(output: unknown): number | null {
-  const parsed = z.object({ creative_count: z.number() }).safeParse(output);
-  return parsed.success ? parsed.data.creative_count : null;
-}
-
-function runConceptCount(input: unknown): number | null {
-  const parsed = z.object({ concept_count: z.number() }).safeParse(input);
-  return parsed.success ? parsed.data.concept_count : null;
-}
-
-function RunsTable({
-  runs,
-  detailHead,
-  detail,
-}: {
-  runs: RunRow[];
-  detailHead: string;
-  detail: (run: RunRow) => string;
-}) {
-  return (
-    <Card className="mt-3 py-2">
-      <CardContent className="px-2">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead className="pl-4">Started</TableHead>
-              <TableHead>{detailHead}</TableHead>
-              <TableHead>Status</TableHead>
-              <TableHead>Cost</TableHead>
-              <TableHead>Finished</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {runs.map((run) => {
-              const error = runError(run.output_json);
-              return (
-                <TableRow key={run.id}>
-                  <TableCell className="pl-4">
-                    {dateTimeFormat.format(new Date(run.created_at))}
-                  </TableCell>
-                  <TableCell className="text-muted-foreground capitalize">
-                    {detail(run)}
-                  </TableCell>
-                  <TableCell>
-                    <div className="flex flex-col gap-1">
-                      <span>
-                        <RunStatusBadge status={run.status} />
-                      </span>
-                      {run.status === "failed" && error && (
-                        <span className="text-destructive max-w-96 truncate text-xs">
-                          {error}
-                        </span>
-                      )}
-                    </div>
-                  </TableCell>
-                  <TableCell className="text-muted-foreground">
-                    {run.cost_usd != null ? `$${run.cost_usd.toFixed(2)}` : "—"}
-                  </TableCell>
-                  <TableCell className="text-muted-foreground">
-                    {run.finished_at
-                      ? dateTimeFormat.format(new Date(run.finished_at))
-                      : "—"}
-                  </TableCell>
-                </TableRow>
-              );
-            })}
-          </TableBody>
-        </Table>
-      </CardContent>
-    </Card>
-  );
-}
+type SearchParams = Record<string, string | string[] | undefined>;
 
 export default async function ClientDetailPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ id: string }>;
+  searchParams: Promise<SearchParams>;
 }) {
   const { id } = await params;
   if (!z.string().uuid().safeParse(id).success) notFound();
+  const sp = await searchParams;
+  const tab = parseClientTab(sp.tab);
 
   const supabase = await createClient();
-
   const [
     clientResult,
-    runsResult,
-    bbmResult,
-    activeBbmResult,
-    candidatesResult,
-    competitorsResult,
-    assetsResult,
-    creativesResult,
-    referencePicksResult,
-    suggestionsResult,
-    assetRequestsResult,
-    regenRunsResult,
+    pendingCandidatesResult,
+    draftCreativesResult,
+    openRequestsResult,
+    pendingSuggestionsResult,
+    activeRunsResult,
   ] = await Promise.all([
-      supabase.from("clients").select("*").eq("id", id).maybeSingle(),
-      supabase
-        .from("runs")
-        .select(
-          "id, type, status, input_json, output_json, cost_usd, created_at, finished_at",
-        )
-        .eq("client_id", id)
-        .in("type", ["buyer_brain", "creative_selection", "still_ads"])
-        .order("created_at", { ascending: false })
-        .limit(20),
-      supabase
-        .from("bbm_versions")
-        .select("version, is_active")
-        .eq("client_id", id)
-        .order("version", { ascending: false })
-        .limit(1),
-      supabase
-        .from("bbm_versions")
-        .select("id")
-        .eq("client_id", id)
-        .eq("is_active", true)
-        .limit(1),
-      supabase
-        .from("ad_candidates")
-        .select("id, status")
-        .eq("client_id", id),
-      supabase
-        .from("competitors")
-        .select("*")
-        .eq("client_id", id)
-        .order("status", { ascending: true })
-        .order("created_at", { ascending: true }),
-      supabase
-        .from("client_assets")
-        .select("id", { count: "exact", head: true })
-        .eq("client_id", id),
-      supabase
-        .from("creatives")
-        .select("id, status")
-        .eq("client_id", id),
-      supabase
-        .from("client_reference_picks")
-        .select("id", { count: "exact", head: true })
-        .eq("client_id", id),
-      supabase
-        .from("brief_suggestions")
-        .select("id", { count: "exact", head: true })
-        .eq("client_id", id)
-        .eq("status", "pending"),
-      supabase
-        .from("asset_requests")
-        .select("*, creative:creatives(hook)")
-        .eq("client_id", id)
-        .in("status", ["open", "fulfilled"])
-        .order("created_at", { ascending: false }),
-      supabase
-        .from("runs")
-        .select("input_json")
-        .eq("client_id", id)
-        .eq("type", "creative_regen")
-        .in("status", ["queued", "running"]),
-    ]);
+    supabase.from("clients").select("*").eq("id", id).maybeSingle(),
+    supabase
+      .from("ad_candidates")
+      .select("id", { count: "exact", head: true })
+      .eq("client_id", id)
+      .eq("status", "candidate"),
+    supabase
+      .from("creatives")
+      .select("id", { count: "exact", head: true })
+      .eq("client_id", id)
+      .eq("status", "draft"),
+    supabase
+      .from("asset_requests")
+      .select("id", { count: "exact", head: true })
+      .eq("client_id", id)
+      .eq("status", "open"),
+    supabase
+      .from("brief_suggestions")
+      .select("id", { count: "exact", head: true })
+      .eq("client_id", id)
+      .eq("status", "pending"),
+    supabase
+      .from("runs")
+      .select("id", { count: "exact", head: true })
+      .eq("client_id", id)
+      .in("status", ["queued", "running"]),
+  ]);
 
   if (!clientResult.data) notFound();
   const client = ClientSchema.parse(clientResult.data);
-  const allRuns = (runsResult.data ?? []).map((row) => RunRowSchema.parse(row));
-  const bbmRuns = allRuns.filter((run) => run.type === "buyer_brain").slice(0, 10);
-  const selectionRuns = allRuns
-    .filter((run) => run.type === "creative_selection")
-    .slice(0, 10);
-  const latestBbm = bbmResult.data?.[0] ?? null;
-  const hasActiveBbm = (activeBbmResult.data?.length ?? 0) > 0;
-  const candidates = candidatesResult.data ?? [];
-  const pendingCandidates = candidates.filter(
-    (c) => c.status === "candidate",
-  ).length;
-  const competitors = (competitorsResult.data ?? []).map((row) =>
-    CompetitorSchema.parse(row),
-  );
-  const assetCount = assetsResult.count ?? 0;
-  const referencePickCount = referencePicksResult.count ?? 0;
-  const pendingSuggestions = suggestionsResult.count ?? 0;
+  const counts: ClientTabCounts = {
+    pendingCandidates: pendingCandidatesResult.count ?? 0,
+    draftCreatives: draftCreativesResult.count ?? 0,
+    openAssetRequests: openRequestsResult.count ?? 0,
+    pendingSuggestions: pendingSuggestionsResult.count ?? 0,
+  };
+  const hasActiveRun = (activeRunsResult.count ?? 0) > 0;
 
-  // Asset requests: open ones (incl. possibly-fulfilled) + recently
-  // fulfilled ones whose linked creative can be regenerated.
-  const assetRequestRows = (assetRequestsResult.data ?? []).map((row) => {
-    const { creative, ...rest } = row as Record<string, unknown> & {
-      creative: { hook: string | null } | null;
-    };
-    return {
-      request: AssetRequestSchema.parse(rest),
-      creativeHook: creative?.hook ?? null,
-    };
-  });
-  const openRequests = assetRequestRows.filter((r) => r.request.status === "open");
-  const regenerableRequests = assetRequestRows
-    .filter(
-      (r) =>
-        r.request.status === "fulfilled" &&
-        r.request.creative_id !== null &&
-        r.request.fulfilled_asset_id !== null,
-    )
-    .slice(0, 4);
-  const regenActiveCreativeIds = new Set(
-    (regenRunsResult.data ?? [])
-      .map((run) => {
-        const parsed = z
-          .object({ creative_id: z.string().uuid() })
-          .safeParse(run.input_json);
-        return parsed.success ? parsed.data.creative_id : null;
-      })
-      .filter((v): v is string => v !== null),
-  );
-  const creativeRows = creativesResult.data ?? [];
-  const draftCreatives = creativeRows.filter((c) => c.status === "draft").length;
-  const selectedWinners = candidates.filter((c) => c.status === "selected").length;
-  const stillAdsRuns = allRuns.filter((run) => run.type === "still_ads").slice(0, 10);
-
-  const isActive = (run: RunRow) =>
-    run.status === "queued" || run.status === "running";
-  const hasActiveBbmRun = bbmRuns.some(isActive);
-  const hasActiveSelectionRun = selectionRuns.some(isActive);
-  const hasActiveStillAdsRun = stillAdsRuns.some(isActive);
+  const tabContent = {
+    overview: <OverviewTab client={client} />,
+    research: <ResearchTab client={client} searchParams={sp} />,
+    selection: <SelectionTab client={client} searchParams={sp} />,
+    creatives: <CreativesTab client={client} searchParams={sp} />,
+    assets: <AssetsTab client={client} searchParams={sp} />,
+    brief: <BriefTab client={client} />,
+  }[tab];
 
   return (
     <div>
-      <AutoRefresh
-        active={hasActiveBbmRun || hasActiveSelectionRun || hasActiveStillAdsRun}
-      />
+      <RunWatcher clientId={client.id} active={hasActiveRun} />
 
       <Link
         href="/clients"
@@ -350,206 +141,13 @@ export default async function ClientDetailPage({
         </div>
       </div>
 
-      {client.brief && (
-        <Card className="mt-6">
-          <CardHeader>
-            <CardTitle className="text-base">Brief</CardTitle>
-          </CardHeader>
-          <CardContent className="text-muted-foreground text-sm whitespace-pre-wrap">
-            {client.brief}
-          </CardContent>
-        </Card>
-      )}
-
-      <div className="mt-6 flex flex-wrap items-center gap-3">
-        <h2 className="text-lg font-semibold">Asset Library</h2>
-        <Button asChild variant="outline" size="sm">
-          <Link href={`/clients/${client.id}/assets`}>
-            <ImageIcon />
-            {assetCount > 0
-              ? `${assetCount} asset${assetCount === 1 ? "" : "s"}`
-              : "Upload assets"}
-            {client.brand_json && " · brand kit set"}
-          </Link>
-        </Button>
-        <h2 className="ml-4 text-lg font-semibold">References</h2>
-        <Button asChild variant="outline" size="sm">
-          <Link href={`/clients/${client.id}/references`}>
-            <GalleryHorizontalEnd />
-            {referencePickCount > 0
-              ? `${referencePickCount} picked from the swipe file`
-              : "Pick from the swipe file"}
-          </Link>
-        </Button>
-        <h2 className="ml-4 text-lg font-semibold">Brief</h2>
-        <Button asChild variant="outline" size="sm">
-          <Link href={`/clients/${client.id}/brief`}>
-            <Compass />
-            Creative brief
-            {pendingSuggestions > 0 && ` (${pendingSuggestions} suggestions)`}
-          </Link>
-        </Button>
+      <div className="mt-5">
+        <ClientTabs clientId={client.id} active={tab} counts={counts} />
       </div>
 
-      <div className="mt-6 flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-3">
-          <h2 className="text-lg font-semibold">Buyer Brain</h2>
-          {latestBbm && (
-            <Button asChild variant="outline" size="sm">
-              <Link href={`/clients/${client.id}/bbm`}>
-                <BookOpenText />
-                View BBM (v{latestBbm.version})
-              </Link>
-            </Button>
-          )}
-        </div>
-        <RunBuyerBrainButton clientId={client.id} disabled={hasActiveBbmRun} />
-      </div>
-
-      {bbmRuns.length === 0 ? (
-        <Card className="mt-3">
-          <CardContent className="text-muted-foreground py-10 text-center text-sm">
-            No Buyer Brain runs yet. Kick one off to build the first matrix.
-          </CardContent>
-        </Card>
-      ) : (
-        <RunsTable
-          runs={bbmRuns}
-          detailHead="Depth"
-          detail={(run) => runDepth(run.input_json)}
-        />
-      )}
-
-      <div className="mt-8">
-        <h2 className="text-lg font-semibold">Competitors</h2>
-        <p className="text-muted-foreground mt-1 text-sm">
-          Scouted automatically on each Creative Selection run, or added by
-          hand. Ignored competitors are never searched.
-        </p>
-        <CompetitorsCard clientId={client.id} competitors={competitors} />
-      </div>
-
-      <div className="mt-8 flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-3">
-          <h2 className="text-lg font-semibold">Creative Selection</h2>
-          {candidates.length > 0 && (
-            <Button asChild variant="outline" size="sm">
-              <Link href={`/clients/${client.id}/candidates`}>
-                <GalleryVerticalEnd />
-                Review candidates
-                {pendingCandidates > 0 && ` (${pendingCandidates} pending)`}
-              </Link>
-            </Button>
-          )}
-        </div>
-        <RunCreativeSelectionButton
-          clientId={client.id}
-          disabled={hasActiveSelectionRun}
-          hasActiveBbm={hasActiveBbm}
-        />
-      </div>
-
-      {selectionRuns.length === 0 ? (
-        <Card className="mt-3">
-          <CardContent className="text-muted-foreground py-10 text-center text-sm">
-            No Creative Selection runs yet.
-            {hasActiveBbm
-              ? " Kick one off to scout competitor ads against the BBM."
-              : " Build a Buyer Brain Matrix first — it is the lens ads are scored through."}
-          </CardContent>
-        </Card>
-      ) : (
-        <RunsTable
-          runs={selectionRuns}
-          detailHead="Result"
-          detail={(run) => {
-            const count = runCandidateCount(run.output_json);
-            return count != null
-              ? `${count} candidates (${runCountry(run.input_json)})`
-              : runCountry(run.input_json);
-          }}
-        />
-      )}
-
-      <div className="mt-8 flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-3">
-          <h2 className="text-lg font-semibold">Still Ads</h2>
-          {creativeRows.length > 0 && (
-            <Button asChild variant="outline" size="sm">
-              <Link href={`/clients/${client.id}/creatives`}>
-                <Sparkles />
-                Review creatives
-                {draftCreatives > 0 && ` (${draftCreatives} pending)`}
-              </Link>
-            </Button>
-          )}
-        </div>
-        <RunStillAdsButton
-          clientId={client.id}
-          disabled={hasActiveStillAdsRun}
-          hasActiveBbm={hasActiveBbm}
-          hasSelectedWinner={selectedWinners > 0}
-        />
-      </div>
-
-      {stillAdsRuns.length === 0 ? (
-        <Card className="mt-3">
-          <CardContent className="text-muted-foreground py-10 text-center text-sm">
-            No Still Ads runs yet.
-            {hasActiveBbm && selectedWinners > 0
-              ? " Kick one off to turn the BBM and your selected winners into static ads."
-              : " Needs an active BBM and at least one selected winning candidate."}
-          </CardContent>
-        </Card>
-      ) : (
-        <RunsTable
-          runs={stillAdsRuns}
-          detailHead="Result"
-          detail={(run) => {
-            const count = runCreativeCount(run.output_json);
-            const concepts = runConceptCount(run.input_json);
-            return count != null
-              ? `${count} creatives`
-              : concepts != null
-                ? `${concepts} concepts`
-                : "—";
-          }}
-        />
-      )}
-
-      {(openRequests.length > 0 || regenerableRequests.length > 0) && (
-        <div className="mt-8">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div>
-              <h2 className="text-lg font-semibold">
-                Asset Requests
-                {openRequests.length > 0 && ` (${openRequests.length} open)`}
-              </h2>
-              <p className="text-muted-foreground mt-1 text-sm">
-                Assets the generation agents wished they had — every creative
-                was still fully generated with a fallback.
-              </p>
-            </div>
-            <CopyRequestsButton
-              clientName={client.name}
-              requests={openRequests.map((r) => r.request)}
-            />
-          </div>
-          <div className="mt-3 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-            {[...openRequests, ...regenerableRequests].map(({ request, creativeHook }) => (
-              <AssetRequestCard
-                key={request.id}
-                request={request}
-                creativeHook={creativeHook}
-                regenActive={
-                  request.creative_id !== null &&
-                  regenActiveCreativeIds.has(request.creative_id)
-                }
-              />
-            ))}
-          </div>
-        </div>
-      )}
+      <Suspense key={tab} fallback={<TabSkeleton />}>
+        {tabContent}
+      </Suspense>
     </div>
   );
 }
