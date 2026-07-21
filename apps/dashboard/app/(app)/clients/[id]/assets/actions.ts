@@ -191,6 +191,7 @@ export async function promoteAssetToLibrary(
     // Curated by the operator (candidate scoring + selection) — human
     // judgment, so the annotation run never rewrites it.
     annotation_source: asset.notes ? "human" : null,
+    annotated_at: asset.notes ? new Date().toISOString() : null,
   });
   if (insertError) {
     return { status: "error", message: insertError.message };

@@ -375,6 +375,7 @@ export async function runReferenceAnnotate(
         vertical: annotation.vertical,
         format_name: annotation.format_name,
         annotation_source: "ai",
+        annotated_at: new Date().toISOString(),
         status: "needs_review",
       })
       .eq("id", reference.id)

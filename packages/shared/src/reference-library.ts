@@ -35,6 +35,8 @@ export const ReferenceLibraryEntrySchema = z.object({
   status: ReferenceStatus,
   // default(null) keeps rows readable if the annotate migration lags a deploy
   annotation_source: AnnotationSource.nullable().default(null),
+  /** When the current annotation was written (AI draft or human edit). */
+  annotated_at: z.string().nullable().default(null),
   created_at: z.string(),
 });
 export type ReferenceLibraryEntry = z.infer<typeof ReferenceLibraryEntrySchema>;
