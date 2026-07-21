@@ -4,7 +4,7 @@ import {
   SeedVertical,
 } from "@gmc/shared";
 import { z } from "zod";
-import { AutoRefresh } from "@/components/auto-refresh";
+import { RunWatcher } from "@/components/run-watcher";
 import { RunStatusBadge } from "@/components/run-status-badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
@@ -63,7 +63,7 @@ export default async function FormatsPage() {
         <RefreshLibraryButton disabled={scanInFlight} />
       </div>
 
-      <AutoRefresh active={scanInFlight} />
+      <RunWatcher active={scanInFlight} />
 
       {/* Summary strip */}
       <Card className="mt-6 py-3">

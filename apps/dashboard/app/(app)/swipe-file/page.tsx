@@ -9,7 +9,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { AutoRefresh } from "@/components/auto-refresh";
+import { RunWatcher } from "@/components/run-watcher";
 import { signMany } from "@/lib/storage";
 import { createClient } from "@/lib/supabase/server";
 import { AnnotateButton } from "./annotate-button";
@@ -158,7 +158,7 @@ export default async function SwipeFilePage({
 
   return (
     <div>
-      <AutoRefresh active={annotateRunActive} />
+      <RunWatcher active={annotateRunActive} />
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold tracking-tight">Swipe File</h1>

@@ -5,7 +5,7 @@ import { ArrowLeft, ExternalLink, Pencil } from "lucide-react";
 import { z } from "zod";
 import { ClientSchema } from "@gmc/shared";
 import { Button } from "@/components/ui/button";
-import { AutoRefresh } from "@/components/auto-refresh";
+import { RunWatcher } from "@/components/run-watcher";
 import { createClient } from "@/lib/supabase/server";
 import { ClientDialog } from "../client-dialog";
 import {
@@ -97,7 +97,7 @@ export default async function ClientDetailPage({
 
   return (
     <div>
-      <AutoRefresh active={hasActiveRun} />
+      <RunWatcher clientId={client.id} active={hasActiveRun} />
 
       <Link
         href="/clients"
