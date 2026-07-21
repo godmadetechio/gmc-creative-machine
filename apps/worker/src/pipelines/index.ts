@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Run, RunType } from "@gmc/shared";
+import { briefSuggestionsHandler } from "./brief-suggestions";
 import { buyerBrainHandler } from "./buyer-brain";
 import { creativeSelectionHandler } from "./creative-selection";
 import { formatScanHandler } from "./format-scan";
@@ -37,4 +38,5 @@ export const pipelines: Record<RunType, PipelineHandler> = {
   video_ads: notImplemented("Phase 4"),
   format_scan: formatScanHandler,
   reference_annotate: referenceAnnotateHandler,
+  brief_suggestions: briefSuggestionsHandler,
 };

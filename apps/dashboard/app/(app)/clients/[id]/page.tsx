@@ -5,6 +5,7 @@ import {
   BookOpenText,
   ExternalLink,
   GalleryVerticalEnd,
+  Compass,
   GalleryHorizontalEnd,
   ImageIcon,
   Pencil,
@@ -166,6 +167,7 @@ export default async function ClientDetailPage({
     assetsResult,
     creativesResult,
     referencePicksResult,
+    suggestionsResult,
   ] = await Promise.all([
       supabase.from("clients").select("*").eq("id", id).maybeSingle(),
       supabase
@@ -211,6 +213,11 @@ export default async function ClientDetailPage({
         .from("client_reference_picks")
         .select("id", { count: "exact", head: true })
         .eq("client_id", id),
+      supabase
+        .from("brief_suggestions")
+        .select("id", { count: "exact", head: true })
+        .eq("client_id", id)
+        .eq("status", "pending"),
     ]);
 
   if (!clientResult.data) notFound();
@@ -231,6 +238,7 @@ export default async function ClientDetailPage({
   );
   const assetCount = assetsResult.count ?? 0;
   const referencePickCount = referencePicksResult.count ?? 0;
+  const pendingSuggestions = suggestionsResult.count ?? 0;
   const creativeRows = creativesResult.data ?? [];
   const draftCreatives = creativeRows.filter((c) => c.status === "draft").length;
   const selectedWinners = candidates.filter((c) => c.status === "selected").length;
@@ -319,6 +327,14 @@ export default async function ClientDetailPage({
             {referencePickCount > 0
               ? `${referencePickCount} picked from the swipe file`
               : "Pick from the swipe file"}
+          </Link>
+        </Button>
+        <h2 className="ml-4 text-lg font-semibold">Brief</h2>
+        <Button asChild variant="outline" size="sm">
+          <Link href={`/clients/${client.id}/brief`}>
+            <Compass />
+            Creative brief
+            {pendingSuggestions > 0 && ` (${pendingSuggestions} suggestions)`}
           </Link>
         </Button>
       </div>

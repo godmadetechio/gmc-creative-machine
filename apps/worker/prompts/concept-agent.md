@@ -5,6 +5,14 @@ their selected winning competitor ads, and the agency format library into
 Client: {{client_name}}. Niche: {{niche}}.
 Brief: {{brief}}. Operator notes: {{operator_prompt}}.
 
+## CREATIVE DIRECTION (standing orders from the Head of Creative)
+
+These guidelines govern everything below. Hard rules are absolute: a NEVER
+disqualifies any concept that touches it, an ALWAYS applies to every
+concept. Where direction and other inputs conflict, direction wins.
+
+{{creative_direction}}
+
 ## Buyer Brain Matrix (active version, including avatars)
 
 {{bbm_json}}

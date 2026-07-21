@@ -1,7 +1,7 @@
 "use client";
 
 import { useActionState, useEffect, useState, useTransition } from "react";
-import type { Client } from "@gmc/shared";
+import { SeedVertical, type Client } from "@gmc/shared";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -74,6 +74,22 @@ export function ClientDialog({
               placeholder="e.g. women 35+ fat loss coaching"
               defaultValue={client?.niche ?? ""}
             />
+          </div>
+          <div className="flex flex-col gap-2">
+            <Label htmlFor="vertical">Vertical</Label>
+            <select
+              id="vertical"
+              name="vertical"
+              defaultValue={client?.vertical ?? ""}
+              className="border-input bg-transparent h-9 rounded-md border px-3 text-sm shadow-xs"
+            >
+              <option value="">not set (defaults to coaching)</option>
+              {SeedVertical.options.map((option) => (
+                <option key={option} value={option}>
+                  {option}
+                </option>
+              ))}
+            </select>
           </div>
           <div className="flex flex-col gap-2">
             <Label htmlFor="brief">Brief</Label>

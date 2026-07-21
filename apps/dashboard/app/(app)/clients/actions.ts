@@ -16,6 +16,7 @@ export async function saveClient(
   const parsed = ClientInputSchema.safeParse({
     name: formData.get("name"),
     niche: formData.get("niche"),
+    vertical: formData.get("vertical") ?? "",
     brief: formData.get("brief"),
     website: formData.get("website"),
     drive_folder_id: formData.get("drive_folder_id"),
