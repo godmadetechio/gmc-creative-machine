@@ -27,6 +27,7 @@ import {
   type NormalizedAd,
 } from "../fb-ads";
 import { loadPrompt } from "../prompts";
+import { setRunStage } from "../run-stage";
 import type { PipelineHandler } from "./index";
 
 // BREADTH strategy: pull the top 20-30 advertisers and keep each one's
@@ -154,6 +155,7 @@ export async function runCreativeSelection(
     );
 
   // ── 0. Competitor scout — keep the competitors table fresh ─────────────
+  setRunStage(supabase, runId, "scouting");
   // Scouting is enrichment: a failed scout degrades to the roster we already
   // have, with a warning. Ignored competitors are never searched, and their
   // names are shown to the scout so they don't get re-suggested.
@@ -344,6 +346,7 @@ export async function runCreativeSelection(
   }));
 
   // ── 1. Derive keyword discovery targets from the BBM ───────────────────
+  setRunStage(supabase, runId, "building_targets");
   // Exact-phrase queries that returned zero results in enough past runs are
   // banned — a phrase real ads don't contain stays a miss. Past keyword
   // performance lives in each run's output_json.apify.per_url_counts.
@@ -466,6 +469,7 @@ export async function runCreativeSelection(
   }
 
   // ── 2. Scrape the Ad Library per target ────────────────────────────────
+  setRunStage(supabase, runId, "scraping");
   const urls = targets.map((target) =>
     target.kind === "keyword"
       ? buildAdLibrarySearchUrl(target.value, input.country)
@@ -609,6 +613,7 @@ export async function runCreativeSelection(
   }
 
   // ── 3. Dedupe + longevity preference ───────────────────────────────────
+  setRunStage(supabase, runId, "deduping");
   const deduped = dedupeAds(allAds);
   // Long-running ads first ("longevity is the filter"), unknown dates last.
   const ranked = [...deduped].sort((a, b) => {
@@ -644,6 +649,7 @@ export async function runCreativeSelection(
   }
 
   // ── 4. Score against the BBM in parallel batches ───────────────────────
+  setRunStage(supabase, runId, "scoring");
   const batches: ScorableAd[][] = [];
   for (let i = 0; i < pool.length; i += SCORE_BATCH_SIZE) {
     batches.push(pool.slice(i, i + SCORE_BATCH_SIZE));
@@ -701,6 +707,7 @@ export async function runCreativeSelection(
   }
 
   // ── 5. Top N → ad_candidates (diversity-capped, quality-floored) ───────
+  setRunStage(supabase, runId, "selecting");
   // The floor beats the count: a queue is never padded with sub-45 matches
   // just to reach max_candidates — the shortfall is reported instead.
   const rankedByScore = scored
@@ -755,6 +762,7 @@ export async function runCreativeSelection(
   }
 
   // ── 6. Archive the previous queue — one run per review, never two ──────
+  setRunStage(supabase, runId, "archiving");
   // Prior rows still unreviewed become 'superseded' (hidden by default);
   // reviewed rows (selected/rejected) are untouched. run_id.is.null covers
   // pre-migration rows.

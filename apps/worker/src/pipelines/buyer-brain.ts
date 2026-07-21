@@ -12,6 +12,7 @@ import { withValidationRetry, type AgentUsage } from "../agent";
 import { getApifyToken } from "../apify";
 import { CostTracker } from "../cost";
 import { loadPrompt } from "../prompts";
+import { setRunStage } from "../run-stage";
 import { createRedditMcpServer, REDDIT_TOOL_NAMES } from "../reddit-tools";
 import { createYoutubeMcpServer, YOUTUBE_TOOL_NAMES } from "../youtube-tools";
 import type { PipelineHandler } from "./index";
@@ -51,9 +52,11 @@ export type BuyerBrainResult = {
 export async function runBuyerBrain(
   clientId: string,
   input: BuyerBrainInput,
-  deps: { supabase: SupabaseClient },
+  // runId is optional so the pipeline:test script can run without a runs row;
+  // stage markers are skipped when absent.
+  deps: { supabase: SupabaseClient; runId?: string },
 ): Promise<BuyerBrainResult> {
-  const { supabase } = deps;
+  const { supabase, runId } = deps;
   const depth = DEPTH_CONFIG[input.depth];
   const cost = new CostTracker();
 
@@ -101,6 +104,7 @@ export async function runBuyerBrain(
       }`,
     );
   console.log(`[buyer_brain] mining (depth=${input.depth}, model per WORKER_MODEL)…`);
+  if (runId) setRunStage(supabase, runId, "mining");
   const settled = await Promise.allSettled(
     MINERS.map((name) => {
       if (name === "reddit-miner") {
@@ -202,6 +206,7 @@ export async function runBuyerBrain(
 
   // ── 2. Composer ────────────────────────────────────────────────────────
   console.log(`[buyer_brain] composing BBM v${nextVersion} from ${allFindings.length} findings…`);
+  if (runId) setRunStage(supabase, runId, "composing");
   let bbm: BBM;
   try {
     const composed = await withValidationRetry(BBMSchema, {
@@ -281,7 +286,10 @@ export async function runBuyerBrain(
 export const buyerBrainHandler: PipelineHandler = async ({ supabase, run }) => {
   const input = BuyerBrainInputSchema.parse(run.input_json ?? {});
   if (!run.client_id) throw new Error("buyer_brain runs require a client_id");
-  const result = await runBuyerBrain(run.client_id, input, { supabase });
+  const result = await runBuyerBrain(run.client_id, input, {
+    supabase,
+    runId: run.id,
+  });
 
   const { error } = await supabase
     .from("runs")

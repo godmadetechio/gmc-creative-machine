@@ -28,6 +28,7 @@ import {
   type ImageProvider,
 } from "../image-provider";
 import { loadPrompt } from "../prompts";
+import { setRunStage } from "../run-stage";
 import type { PipelineHandler } from "./index";
 
 // Phase 3 — Still Ad Creation (build plan §6, training integration §2).
@@ -212,6 +213,7 @@ export async function runStillAds(
     );
 
   // ── 2. Concept agent (no tools) ──────────────────────────────────────────
+  setRunStage(supabase, runId, "concepting");
   console.log(
     `[still_ads] generating ${input.concept_count} concepts (BBM v${bbmVersion.version}, ${winners.length} winners, ${formats.length} formats)…`,
   );
@@ -316,6 +318,7 @@ export async function runStillAds(
       : input.variants_per_concept;
 
   // ── 3. Prompt compiler (batched) ─────────────────────────────────────────
+  setRunStage(supabase, runId, "compiling");
   type VariantKey = { concept_index: number; hook_index: number };
   const compiled = new Map<string, string>(); // "ci:hi" -> prompt
   const keyOf = (v: VariantKey) => `${v.concept_index}:${v.hook_index}`;
@@ -417,6 +420,7 @@ export async function runStillAds(
   }
 
   // ── 5. Generate → Storage ────────────────────────────────────────────────
+  setRunStage(supabase, runId, "generating");
   console.log(
     `[still_ads] generating ${plan.length} images (≈$${plannedCost.toFixed(2)}, ${GENERATION_CONCURRENCY} in flight)…`,
   );
@@ -469,6 +473,7 @@ export async function runStillAds(
   }
 
   // ── 6. Drive delivery (warn-and-skip) ───────────────────────────────────
+  setRunStage(supabase, runId, "delivering");
   const driveConfig = getDriveConfig();
   const driveFiles = new Map<string, { id: string; webViewLink: string | null }>();
   if (!driveConfig) {
@@ -504,6 +509,7 @@ export async function runStillAds(
   }
 
   // ── 7. creatives rows — one per variant (concept × hook) ────────────────
+  setRunStage(supabase, runId, "persisting");
   const byVariant = new Map<string, GeneratedImage[]>();
   for (const image of images) {
     const key = `${image.conceptIndex}:${image.hookIndex}`;

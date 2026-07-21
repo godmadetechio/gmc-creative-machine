@@ -21,12 +21,17 @@ const RunRowSchema = z.object({
   id: z.string().uuid(),
   type: RunType,
   status: RunStatus,
+  stage: z.string().nullable().optional(),
   cost_usd: z.number().nullable(),
   started_at: z.string().nullable(),
   finished_at: z.string().nullable(),
   created_at: z.string(),
   clients: z.object({ name: z.string() }).nullable(),
 });
+
+// Mirrors the worker-offline banner threshold: queued this long with no
+// pickup usually means the worker is down.
+const STUCK_QUEUED_MS = 3 * 60 * 1000;
 
 const dateTimeFormat = new Intl.DateTimeFormat("en-GB", {
   dateStyle: "medium",
@@ -48,7 +53,7 @@ export default async function RunsPage({
   const { data, error, count } = await supabase
     .from("runs")
     .select(
-      "id, type, status, cost_usd, started_at, finished_at, created_at, clients (name)",
+      "id, type, status, stage, cost_usd, started_at, finished_at, created_at, clients (name)",
       { count: "exact" },
     )
     .order("created_at", { ascending: false })
@@ -102,7 +107,18 @@ export default async function RunsPage({
                     </TableCell>
                     <TableCell>{RUN_TYPE_LABELS[run.type]}</TableCell>
                     <TableCell>
-                      <RunStatusBadge status={run.status} />
+                      <div className="flex flex-col gap-1">
+                        <span>
+                          <RunStatusBadge status={run.status} stage={run.stage} />
+                        </span>
+                        {run.status === "queued" &&
+                          Date.now() - new Date(run.created_at).getTime() >
+                            STUCK_QUEUED_MS && (
+                            <span className="text-xs text-amber-500">
+                              stalled? queued &gt;3 min
+                            </span>
+                          )}
+                      </div>
                     </TableCell>
                     <TableCell className="text-muted-foreground">
                       {run.cost_usd != null

@@ -18,6 +18,7 @@ export const RunRowSchema = z.object({
   id: z.string().uuid(),
   type: z.string(),
   status: RunStatus,
+  stage: z.string().nullable().optional(),
   input_json: z.unknown().nullable(),
   output_json: z.unknown().nullable(),
   cost_usd: z.number().nullable(),
@@ -27,7 +28,18 @@ export const RunRowSchema = z.object({
 export type RunRow = z.infer<typeof RunRowSchema>;
 
 export const RUN_ROW_COLUMNS =
-  "id, type, status, input_json, output_json, cost_usd, created_at, finished_at";
+  "id, type, status, stage, input_json, output_json, cost_usd, created_at, finished_at";
+
+// A run sitting queued this long with no worker pickup is probably stalled
+// (worker down or wedged) — matches the offline-banner threshold family.
+export const STUCK_QUEUED_MS = 3 * 60 * 1000;
+
+export function isStuckQueued(run: { status: string; created_at: string }): boolean {
+  return (
+    run.status === "queued" &&
+    Date.now() - new Date(run.created_at).getTime() > STUCK_QUEUED_MS
+  );
+}
 
 const dateTimeFormat = new Intl.DateTimeFormat("en-GB", {
   dateStyle: "medium",
@@ -103,11 +115,16 @@ export function RunsTable({
                   <TableCell>
                     <div className="flex flex-col gap-1">
                       <span>
-                        <RunStatusBadge status={run.status} />
+                        <RunStatusBadge status={run.status} stage={run.stage} />
                       </span>
                       {run.status === "failed" && error && (
                         <span className="text-destructive max-w-96 truncate text-xs">
                           {error}
+                        </span>
+                      )}
+                      {isStuckQueued(run) && (
+                        <span className="text-xs text-amber-500">
+                          queued &gt;3 min — is the worker running?
                         </span>
                       )}
                     </div>

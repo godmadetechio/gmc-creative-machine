@@ -1,9 +1,34 @@
 import "./env";
+import { hostname } from "node:os";
 import { RunSchema } from "@gmc/shared";
 import { pipelines } from "./pipelines/index";
 import { createServiceClient } from "./supabase";
 
 const POLL_INTERVAL_MS = 10_000;
+// Liveness beat for the dashboard's "worker offline" banner (stale >2 min).
+const HEARTBEAT_INTERVAL_MS = 30_000;
+
+function startHeartbeat(supabase: ReturnType<typeof createServiceClient>) {
+  const workerId = `${hostname()}#${process.pid}`;
+  const startedAt = new Date().toISOString();
+  const beat = async () => {
+    try {
+      const { error } = await supabase.from("worker_heartbeats").upsert({
+        id: workerId,
+        started_at: startedAt,
+        last_seen_at: new Date().toISOString(),
+      });
+      if (error) console.warn(`[worker] heartbeat failed: ${error.message}`);
+    } catch (err) {
+      // A failed beat must never take the worker down.
+      console.warn(`[worker] heartbeat failed: ${err instanceof Error ? err.message : err}`);
+    }
+  };
+  void beat();
+  // unref(): the timer never keeps the process alive on its own. Pipelines
+  // are I/O-bound, so the interval fires fine during long runs.
+  setInterval(beat, HEARTBEAT_INTERVAL_MS).unref();
+}
 
 async function claimNextRun(
   supabase: ReturnType<typeof createServiceClient>,
@@ -52,6 +77,7 @@ async function main() {
   console.log(
     `[worker] started — polling for queued runs every ${POLL_INTERVAL_MS / 1000}s`,
   );
+  startHeartbeat(supabase);
 
   for (;;) {
     const run = await claimNextRun(supabase);

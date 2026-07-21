@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { Separator } from "@/components/ui/separator";
 import { SidebarNav } from "@/components/sidebar-nav";
 import { SignOutButton } from "@/components/sign-out-button";
+import { WorkerStatusBanner } from "@/components/worker-status-banner";
 import { createClient } from "@/lib/supabase/server";
 
 export default async function AppLayout({
@@ -51,7 +52,10 @@ export default async function AppLayout({
           <SignOutButton />
         </div>
       </aside>
-      <main className="ml-56 flex-1 p-8">{children}</main>
+      <div className="ml-56 flex flex-1 flex-col">
+        <WorkerStatusBanner />
+        <main className="flex-1 p-8">{children}</main>
+      </div>
     </div>
   );
 }
