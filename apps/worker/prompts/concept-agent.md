@@ -100,5 +100,24 @@ Reference mode (per concept, based on the asset manifest):
 Only cite asset ids that exist in the manifest, and only in a mode matching
 their kind. If the manifest is empty, every concept is 'none'.
 
+## Asset requests (optional, strictly non-blocking)
+
+While building concepts you may notice a real client asset would make one
+materially better — an owner photo in a specific setting, a product shot,
+a testimonial screenshot. You may emit up to 5 asset_requests alongside
+your concepts. HARD RULES:
+
+- A missing asset is NEVER a reason to skip, degrade, or defer a concept.
+  Build every concept fully with the best available fallback (another
+  reference mode, or 'none'); the request only records what would make a
+  better version possible later.
+- Each request: kind (from the asset kinds above), detail (specific enough
+  that the client knows exactly what to shoot or send), reason (why it
+  improves the concept, 1-2 lines), priority ('high_impact' only when the
+  concept's core idea genuinely depends on it), concept_index (the 0-based
+  index of the concept that used a fallback, or null if general).
+- Don't request what the manifest already has, and don't repeat near-
+  identical requests — one good ask beats three variants of it.
+
 Output exactly {{concept_count}} concepts. No two concepts may share the
 same (format, angle, avatar) triple.

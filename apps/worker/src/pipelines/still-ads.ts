@@ -6,6 +6,8 @@ import {
   CompilerOutputSchema,
   ConceptAgentOutputSchema,
   CREATIVES_BUCKET,
+  isSimilarRequestDetail,
+  MAX_ASSET_REQUESTS_PER_RUN,
   StillAdsInputSchema,
   type AdCandidate,
   type AspectFile,
@@ -243,6 +245,9 @@ export async function runStillAds(
   // references must point at real inputs. Invalid concepts are dropped with
   // a warning — a 9/10 batch beats a dead run.
   const concepts: StillConcept[] = [];
+  // Agent-emitted asset_requests cite concepts by their ORIGINAL index —
+  // track where each surviving concept landed after cross-check drops.
+  const filteredIndexByOriginal = new Map<number, number>();
   for (const [i, concept] of conceptResult.data.concepts.entries()) {
     const problems: string[] = [];
     if (!avatarNames.has(concept.avatar)) {
@@ -269,6 +274,7 @@ export async function runStillAds(
       warnings.push(`concept ${i + 1} ("${concept.headline}") dropped: ${problems.join("; ")}`);
       continue;
     }
+    filteredIndexByOriginal.set(i, concepts.length);
     concepts.push(concept);
   }
   if (concepts.length === 0) {
@@ -477,7 +483,8 @@ export async function runStillAds(
     else byVariant.set(key, [image]);
   }
 
-  const rows = [...byVariant.entries()].map(([key, files]) => {
+  const variantEntries = [...byVariant.entries()];
+  const rows = variantEntries.map(([key, files]) => {
     const [ci, hi] = key.split(":").map(Number) as [number, number];
     const concept = concepts[ci]!;
     // Primary file = the first requested aspect that succeeded.
@@ -520,6 +527,80 @@ export async function runStillAds(
     );
   }
 
+  // ── 8. Asset requests (strictly non-blocking — recorded after every
+  // creative already generated with its fallback) ─────────────────────────
+  const creativeIdByConcept = new Map<number, string>();
+  (insertedRows ?? []).forEach((row, i) => {
+    const conceptIndex = Number(variantEntries[i]![0].split(":")[0]);
+    if (!creativeIdByConcept.has(conceptIndex)) {
+      creativeIdByConcept.set(conceptIndex, row.id as string);
+    }
+  });
+
+  let assetRequestsInserted = 0;
+  const agentRequests = conceptResult.data.asset_requests ?? [];
+  if (agentRequests.length > 0) {
+    const { data: openRows, error: openError } = await supabase
+      .from("asset_requests")
+      .select("requested_kind, detail")
+      .eq("client_id", clientId)
+      .eq("status", "open");
+    if (openError) {
+      warnings.push(`asset requests skipped — failed to load open requests: ${openError.message}`);
+    } else {
+      const existing = (openRows ?? []) as { requested_kind: string; detail: string }[];
+      const toInsert: {
+        client_id: string;
+        run_id: string;
+        creative_id: string | null;
+        requested_kind: string;
+        detail: string;
+        reason: string;
+        priority: string;
+      }[] = [];
+      for (const request of agentRequests.slice(0, MAX_ASSET_REQUESTS_PER_RUN)) {
+        const isDupe = [...existing, ...toInsert].some(
+          (e) =>
+            e.requested_kind === request.kind &&
+            isSimilarRequestDetail(e.detail, request.detail),
+        );
+        if (isDupe) {
+          warnings.push(
+            `asset request deduped (similar open request exists): ${request.detail.slice(0, 80)}`,
+          );
+          continue;
+        }
+        const filteredIndex =
+          request.concept_index !== null
+            ? filteredIndexByOriginal.get(request.concept_index)
+            : undefined;
+        toInsert.push({
+          client_id: clientId,
+          run_id: runId,
+          creative_id:
+            filteredIndex !== undefined
+              ? (creativeIdByConcept.get(filteredIndex) ?? null)
+              : null,
+          requested_kind: request.kind,
+          detail: request.detail,
+          reason: request.reason,
+          priority: request.priority,
+        });
+      }
+      if (toInsert.length > 0) {
+        const { error: requestError } = await supabase
+          .from("asset_requests")
+          .insert(toInsert);
+        if (requestError) {
+          warnings.push(`failed to write asset requests: ${requestError.message}`);
+        } else {
+          assetRequestsInserted = toInsert.length;
+          console.log(`[still_ads] ${toInsert.length} asset request(s) recorded`);
+        }
+      }
+    }
+  }
+
   const totalCost = Number((cost.total + generationCost).toFixed(4));
   console.log(
     `[still_ads] done — ${rows.length} creatives (${images.length} images), agents $${cost.total.toFixed(2)} + generation $${generationCost.toFixed(2)}`,
@@ -539,6 +620,7 @@ export async function runStillAds(
       bbm_version: bbmVersion.version,
       winners_used: winners.length,
       directives_used: direction.versionsUsed,
+      asset_requests: assetRequestsInserted,
       aspects: input.aspects,
       generation_cost_usd: Number(generationCost.toFixed(4)),
       agent_cost_usd: Number(cost.total.toFixed(4)),

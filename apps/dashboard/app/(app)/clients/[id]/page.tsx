@@ -12,7 +12,12 @@ import {
   Sparkles,
 } from "lucide-react";
 import { z } from "zod";
-import { ClientSchema, CompetitorSchema, RunStatus } from "@gmc/shared";
+import {
+  AssetRequestSchema,
+  ClientSchema,
+  CompetitorSchema,
+  RunStatus,
+} from "@gmc/shared";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -32,7 +37,9 @@ import { RunStatusBadge } from "@/components/run-status-badge";
 import { createClient } from "@/lib/supabase/server";
 import { ClientDialog } from "../client-dialog";
 import { AutoRefresh } from "@/components/auto-refresh";
+import { AssetRequestCard } from "./asset-request-card";
 import { CompetitorsCard } from "./competitors-card";
+import { CopyRequestsButton } from "./copy-requests-button";
 import { RunBuyerBrainButton } from "./run-buyer-brain-button";
 import { RunCreativeSelectionButton } from "./run-creative-selection-button";
 import { RunStillAdsButton } from "./run-still-ads-button";
@@ -168,6 +175,8 @@ export default async function ClientDetailPage({
     creativesResult,
     referencePicksResult,
     suggestionsResult,
+    assetRequestsResult,
+    regenRunsResult,
   ] = await Promise.all([
       supabase.from("clients").select("*").eq("id", id).maybeSingle(),
       supabase
@@ -218,6 +227,18 @@ export default async function ClientDetailPage({
         .select("id", { count: "exact", head: true })
         .eq("client_id", id)
         .eq("status", "pending"),
+      supabase
+        .from("asset_requests")
+        .select("*, creative:creatives(hook)")
+        .eq("client_id", id)
+        .in("status", ["open", "fulfilled"])
+        .order("created_at", { ascending: false }),
+      supabase
+        .from("runs")
+        .select("input_json")
+        .eq("client_id", id)
+        .eq("type", "creative_regen")
+        .in("status", ["queued", "running"]),
     ]);
 
   if (!clientResult.data) notFound();
@@ -239,6 +260,37 @@ export default async function ClientDetailPage({
   const assetCount = assetsResult.count ?? 0;
   const referencePickCount = referencePicksResult.count ?? 0;
   const pendingSuggestions = suggestionsResult.count ?? 0;
+
+  // Asset requests: open ones (incl. possibly-fulfilled) + recently
+  // fulfilled ones whose linked creative can be regenerated.
+  const assetRequestRows = (assetRequestsResult.data ?? []).map((row) => {
+    const { creative, ...rest } = row as Record<string, unknown> & {
+      creative: { hook: string | null } | null;
+    };
+    return {
+      request: AssetRequestSchema.parse(rest),
+      creativeHook: creative?.hook ?? null,
+    };
+  });
+  const openRequests = assetRequestRows.filter((r) => r.request.status === "open");
+  const regenerableRequests = assetRequestRows
+    .filter(
+      (r) =>
+        r.request.status === "fulfilled" &&
+        r.request.creative_id !== null &&
+        r.request.fulfilled_asset_id !== null,
+    )
+    .slice(0, 4);
+  const regenActiveCreativeIds = new Set(
+    (regenRunsResult.data ?? [])
+      .map((run) => {
+        const parsed = z
+          .object({ creative_id: z.string().uuid() })
+          .safeParse(run.input_json);
+        return parsed.success ? parsed.data.creative_id : null;
+      })
+      .filter((v): v is string => v !== null),
+  );
   const creativeRows = creativesResult.data ?? [];
   const draftCreatives = creativeRows.filter((c) => c.status === "draft").length;
   const selectedWinners = candidates.filter((c) => c.status === "selected").length;
@@ -463,6 +515,40 @@ export default async function ClientDetailPage({
                 : "—";
           }}
         />
+      )}
+
+      {(openRequests.length > 0 || regenerableRequests.length > 0) && (
+        <div className="mt-8">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <h2 className="text-lg font-semibold">
+                Asset Requests
+                {openRequests.length > 0 && ` (${openRequests.length} open)`}
+              </h2>
+              <p className="text-muted-foreground mt-1 text-sm">
+                Assets the generation agents wished they had — every creative
+                was still fully generated with a fallback.
+              </p>
+            </div>
+            <CopyRequestsButton
+              clientName={client.name}
+              requests={openRequests.map((r) => r.request)}
+            />
+          </div>
+          <div className="mt-3 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+            {[...openRequests, ...regenerableRequests].map(({ request, creativeHook }) => (
+              <AssetRequestCard
+                key={request.id}
+                request={request}
+                creativeHook={creativeHook}
+                regenActive={
+                  request.creative_id !== null &&
+                  regenActiveCreativeIds.has(request.creative_id)
+                }
+              />
+            ))}
+          </div>
+        </div>
       )}
     </div>
   );

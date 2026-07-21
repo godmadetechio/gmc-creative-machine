@@ -10,6 +10,7 @@ export const RUN_TYPE_LABELS: Record<RunType, string> = {
   format_scan: "Format Scan",
   reference_annotate: "Reference Annotation",
   brief_suggestions: "Brief Suggestions",
+  creative_regen: "Creative Regen",
 };
 
 const STATUS_STYLES: Record<RunStatus, string> = {
