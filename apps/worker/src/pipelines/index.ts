@@ -3,6 +3,7 @@ import type { Run, RunType } from "@gmc/shared";
 import { buyerBrainHandler } from "./buyer-brain";
 import { creativeSelectionHandler } from "./creative-selection";
 import { formatScanHandler } from "./format-scan";
+import { stillAdsHandler } from "./still-ads";
 
 export type PipelineContext = {
   supabase: SupabaseClient;
@@ -31,7 +32,7 @@ function notImplemented(phase: string): PipelineHandler {
 export const pipelines: Record<RunType, PipelineHandler> = {
   buyer_brain: buyerBrainHandler,
   creative_selection: creativeSelectionHandler,
-  still_ads: notImplemented("Phase 3"),
+  still_ads: stillAdsHandler,
   video_ads: notImplemented("Phase 4"),
   format_scan: formatScanHandler,
 };

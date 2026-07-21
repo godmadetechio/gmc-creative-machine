@@ -10,8 +10,8 @@ export default function ReviewPage() {
       <Card className="mt-8">
         <CardContent className="text-muted-foreground py-12 text-center text-sm">
           Ad candidate review lives on each client&apos;s page (Creative
-          Selection → Review candidates). The creative review queue arrives
-          in Phase 3.
+          Selection → Review candidates), and the creative review queue at
+          Still Ads → Review creatives.
         </CardContent>
       </Card>
     </div>

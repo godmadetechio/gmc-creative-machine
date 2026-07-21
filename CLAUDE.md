@@ -16,7 +16,7 @@ Full architecture: see GODMADE_SYSTEM_BUILD_PLAN.md (read it before any work).
 - Runs are background jobs; never run pipelines inside HTTP request handlers
 - Track token cost per run in runs.cost_usd
 - Env vars in .env.local (never commit): ANTHROPIC_API_KEY, SUPABASE_*, APIFY_TOKEN,
-  GEMINI_API_KEY, HIGGSFIELD_API_KEY, GOOGLE_DRIVE_*
+  FAL_API_KEY, GEMINI_API_KEY, HIGGSFIELD_API_KEY, GOOGLE_DRIVE_*
 
 ## Commands
 - pnpm dev            — dashboard on :3000

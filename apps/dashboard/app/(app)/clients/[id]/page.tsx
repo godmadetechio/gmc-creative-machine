@@ -7,6 +7,7 @@ import {
   GalleryVerticalEnd,
   ImageIcon,
   Pencil,
+  Sparkles,
 } from "lucide-react";
 import { z } from "zod";
 import { ClientSchema, CompetitorSchema, RunStatus } from "@gmc/shared";
@@ -32,6 +33,7 @@ import { AutoRefresh } from "@/components/auto-refresh";
 import { CompetitorsCard } from "./competitors-card";
 import { RunBuyerBrainButton } from "./run-buyer-brain-button";
 import { RunCreativeSelectionButton } from "./run-creative-selection-button";
+import { RunStillAdsButton } from "./run-still-ads-button";
 
 const RunRowSchema = z.object({
   id: z.string().uuid(),
@@ -68,6 +70,16 @@ function runError(output: unknown): string | null {
 function runCandidateCount(output: unknown): number | null {
   const parsed = z.object({ candidate_count: z.number() }).safeParse(output);
   return parsed.success ? parsed.data.candidate_count : null;
+}
+
+function runCreativeCount(output: unknown): number | null {
+  const parsed = z.object({ creative_count: z.number() }).safeParse(output);
+  return parsed.success ? parsed.data.creative_count : null;
+}
+
+function runConceptCount(input: unknown): number | null {
+  const parsed = z.object({ concept_count: z.number() }).safeParse(input);
+  return parsed.success ? parsed.data.concept_count : null;
 }
 
 function RunsTable({
@@ -151,6 +163,7 @@ export default async function ClientDetailPage({
     candidatesResult,
     competitorsResult,
     assetsResult,
+    creativesResult,
   ] = await Promise.all([
       supabase.from("clients").select("*").eq("id", id).maybeSingle(),
       supabase
@@ -159,7 +172,7 @@ export default async function ClientDetailPage({
           "id, type, status, input_json, output_json, cost_usd, created_at, finished_at",
         )
         .eq("client_id", id)
-        .in("type", ["buyer_brain", "creative_selection"])
+        .in("type", ["buyer_brain", "creative_selection", "still_ads"])
         .order("created_at", { ascending: false })
         .limit(20),
       supabase
@@ -188,6 +201,10 @@ export default async function ClientDetailPage({
         .from("client_assets")
         .select("id", { count: "exact", head: true })
         .eq("client_id", id),
+      supabase
+        .from("creatives")
+        .select("id, status")
+        .eq("client_id", id),
     ]);
 
   if (!clientResult.data) notFound();
@@ -207,15 +224,22 @@ export default async function ClientDetailPage({
     CompetitorSchema.parse(row),
   );
   const assetCount = assetsResult.count ?? 0;
+  const creativeRows = creativesResult.data ?? [];
+  const draftCreatives = creativeRows.filter((c) => c.status === "draft").length;
+  const selectedWinners = candidates.filter((c) => c.status === "selected").length;
+  const stillAdsRuns = allRuns.filter((run) => run.type === "still_ads").slice(0, 10);
 
   const isActive = (run: RunRow) =>
     run.status === "queued" || run.status === "running";
   const hasActiveBbmRun = bbmRuns.some(isActive);
   const hasActiveSelectionRun = selectionRuns.some(isActive);
+  const hasActiveStillAdsRun = stillAdsRuns.some(isActive);
 
   return (
     <div>
-      <AutoRefresh active={hasActiveBbmRun || hasActiveSelectionRun} />
+      <AutoRefresh
+        active={hasActiveBbmRun || hasActiveSelectionRun || hasActiveStillAdsRun}
+      />
 
       <Link
         href="/clients"
@@ -359,6 +383,52 @@ export default async function ClientDetailPage({
             return count != null
               ? `${count} candidates (${runCountry(run.input_json)})`
               : runCountry(run.input_json);
+          }}
+        />
+      )}
+
+      <div className="mt-8 flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-center gap-3">
+          <h2 className="text-lg font-semibold">Still Ads</h2>
+          {creativeRows.length > 0 && (
+            <Button asChild variant="outline" size="sm">
+              <Link href={`/clients/${client.id}/creatives`}>
+                <Sparkles />
+                Review creatives
+                {draftCreatives > 0 && ` (${draftCreatives} pending)`}
+              </Link>
+            </Button>
+          )}
+        </div>
+        <RunStillAdsButton
+          clientId={client.id}
+          disabled={hasActiveStillAdsRun}
+          hasActiveBbm={hasActiveBbm}
+          hasSelectedWinner={selectedWinners > 0}
+        />
+      </div>
+
+      {stillAdsRuns.length === 0 ? (
+        <Card className="mt-3">
+          <CardContent className="text-muted-foreground py-10 text-center text-sm">
+            No Still Ads runs yet.
+            {hasActiveBbm && selectedWinners > 0
+              ? " Kick one off to turn the BBM and your selected winners into static ads."
+              : " Needs an active BBM and at least one selected winning candidate."}
+          </CardContent>
+        </Card>
+      ) : (
+        <RunsTable
+          runs={stillAdsRuns}
+          detailHead="Result"
+          detail={(run) => {
+            const count = runCreativeCount(run.output_json);
+            const concepts = runConceptCount(run.input_json);
+            return count != null
+              ? `${count} creatives`
+              : concepts != null
+                ? `${concepts} concepts`
+                : "—";
           }}
         />
       )}

@@ -6,3 +6,4 @@ export * from "./creative-selection";
 export * from "./asset";
 export * from "./competitor";
 export * from "./format-library";
+export * from "./still-ads";
