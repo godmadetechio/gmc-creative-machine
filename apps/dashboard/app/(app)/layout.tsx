@@ -16,6 +16,22 @@ export default async function AppLayout({
     redirect("/login");
   }
 
+  // Review badge = things a human must click on. The app is fully dynamic
+  // (cookies), so this re-renders on every navigation and revalidatePath —
+  // fresh enough without polling.
+  const [pendingCandidates, draftCreatives] = await Promise.all([
+    supabase
+      .from("ad_candidates")
+      .select("id", { count: "exact", head: true })
+      .eq("status", "candidate"),
+    supabase
+      .from("creatives")
+      .select("id", { count: "exact", head: true })
+      .eq("status", "draft"),
+  ]);
+  const reviewCount =
+    (pendingCandidates.count ?? 0) + (draftCreatives.count ?? 0);
+
   return (
     <div className="flex min-h-screen">
       <aside className="bg-sidebar border-sidebar-border fixed inset-y-0 left-0 flex w-56 flex-col border-r">
@@ -25,7 +41,7 @@ export default async function AppLayout({
         </div>
         <Separator />
         <div className="flex-1 overflow-y-auto p-3">
-          <SidebarNav />
+          <SidebarNav reviewCount={reviewCount} />
         </div>
         <Separator />
         <div className="p-3">

@@ -13,6 +13,8 @@ import {
   RUN_TYPE_LABELS,
   RunStatusBadge,
 } from "@/components/run-status-badge";
+import { PaginationBar } from "@/components/pagination-bar";
+import { parsePageParams } from "@/lib/pagination";
 import { createClient } from "@/lib/supabase/server";
 
 const RunRowSchema = z.object({
@@ -35,16 +37,27 @@ function formatTimestamp(value: string | null) {
   return value ? dateTimeFormat.format(new Date(value)) : "—";
 }
 
-export default async function RunsPage() {
+export default async function RunsPage({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
+  const sp = await searchParams;
+  const { page, from, to } = parsePageParams(sp);
   const supabase = await createClient();
-  const { data, error } = await supabase
+  const { data, error, count } = await supabase
     .from("runs")
     .select(
       "id, type, status, cost_usd, started_at, finished_at, created_at, clients (name)",
+      { count: "exact" },
     )
-    .order("created_at", { ascending: false });
+    .order("created_at", { ascending: false })
+    .range(from, to);
 
   const runs = (data ?? []).map((row) => RunRowSchema.parse(row));
+  const totalCount = count ?? runs.length;
+  const makeHref = (nextPage: number) =>
+    nextPage > 1 ? `/runs?page=${nextPage}` : "/runs";
 
   return (
     <div>
@@ -109,6 +122,14 @@ export default async function RunsPage() {
           </CardContent>
         </Card>
       )}
+      <div className="mt-4">
+        <PaginationBar
+          page={page}
+          totalCount={totalCount}
+          makeHref={makeHref}
+          label="runs"
+        />
+      </div>
     </div>
   );
 }
