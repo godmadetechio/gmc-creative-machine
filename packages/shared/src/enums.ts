@@ -8,6 +8,7 @@ export const RunType = z.enum([
   "still_ads",
   "video_ads",
   "format_scan",
+  "reference_annotate",
 ]);
 export type RunType = z.infer<typeof RunType>;
 

@@ -3,6 +3,7 @@ import type { Run, RunType } from "@gmc/shared";
 import { buyerBrainHandler } from "./buyer-brain";
 import { creativeSelectionHandler } from "./creative-selection";
 import { formatScanHandler } from "./format-scan";
+import { referenceAnnotateHandler } from "./reference-annotate";
 import { stillAdsHandler } from "./still-ads";
 
 export type PipelineContext = {
@@ -35,4 +36,5 @@ export const pipelines: Record<RunType, PipelineHandler> = {
   still_ads: stillAdsHandler,
   video_ads: notImplemented("Phase 4"),
   format_scan: formatScanHandler,
+  reference_annotate: referenceAnnotateHandler,
 };

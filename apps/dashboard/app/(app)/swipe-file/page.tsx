@@ -8,7 +8,9 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { AutoRefresh } from "@/components/auto-refresh";
 import { createClient } from "@/lib/supabase/server";
+import { AnnotateButton } from "./annotate-button";
 import { ReferenceCard } from "./reference-card";
 import { ReferenceUploader } from "./reference-uploader";
 
@@ -64,7 +66,7 @@ export default async function SwipeFilePage({
   const showArchived = filters.archived === "1";
 
   const supabase = await createClient();
-  const [referencesResult, formatsResult] = await Promise.all([
+  const [referencesResult, formatsResult, annotateRunResult] = await Promise.all([
     supabase
       .from("reference_library")
       .select("*")
@@ -74,6 +76,12 @@ export default async function SwipeFilePage({
       .select("name")
       .eq("status", "active")
       .order("name"),
+    supabase
+      .from("runs")
+      .select("id")
+      .eq("type", "reference_annotate")
+      .in("status", ["queued", "running"])
+      .limit(1),
   ]);
 
   const all = (referencesResult.data ?? []).map((row) =>
@@ -89,14 +97,25 @@ export default async function SwipeFilePage({
     ...new Set(all.map((r) => r.format_name).filter((v): v is string => !!v)),
   ];
 
-  const references = all.filter(
-    (r) =>
-      (showArchived ? true : r.status === "active") &&
-      (!filters.tag || r.tags.includes(filters.tag)) &&
-      (!filters.vertical || r.vertical === filters.vertical) &&
-      (!filters.format || r.format_name === filters.format),
-  );
+  const references = all
+    .filter(
+      (r) =>
+        (showArchived ? true : r.status !== "archived") &&
+        (!filters.tag || r.tags.includes(filters.tag)) &&
+        (!filters.vertical || r.vertical === filters.vertical) &&
+        (!filters.format || r.format_name === filters.format),
+    )
+    // AI drafts awaiting review float to the top of the grid.
+    .sort(
+      (a, b) =>
+        Number(b.status === "needs_review") - Number(a.status === "needs_review"),
+    );
   const archivedCount = all.filter((r) => r.status === "archived").length;
+  const needsReviewCount = all.filter((r) => r.status === "needs_review").length;
+  const unannotatedCount = all.filter(
+    (r) => r.annotation_source === null && r.status !== "archived",
+  ).length;
+  const annotateRunActive = (annotateRunResult.data?.length ?? 0) > 0;
 
   const urlByPath = new Map<string, string>();
   const paths = references.map((r) => r.storage_path);
@@ -111,6 +130,7 @@ export default async function SwipeFilePage({
 
   return (
     <div>
+      <AutoRefresh active={annotateRunActive} />
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold tracking-tight">Swipe File</h1>
@@ -118,18 +138,26 @@ export default async function SwipeFilePage({
             The agency-wide reference library — curated style references every
             client can pick from. Notes are the brief the concept agent reads:
             what to take, what to ignore, when to use it.
+            {needsReviewCount > 0 &&
+              ` ${needsReviewCount} AI annotation${needsReviewCount === 1 ? "" : "s"} awaiting review.`}
           </p>
         </div>
-        {archivedCount > 0 && (
-          <Button asChild variant="outline" size="sm">
-            <Link
-              href={filterHref(filters, { archived: showArchived ? undefined : "1" })}
-            >
-              <Archive />
-              {showArchived ? "Hide archived" : `Show archived (${archivedCount})`}
-            </Link>
-          </Button>
-        )}
+        <div className="flex items-center gap-2">
+          <AnnotateButton
+            unannotatedCount={unannotatedCount}
+            runActive={annotateRunActive}
+          />
+          {archivedCount > 0 && (
+            <Button asChild variant="outline" size="sm">
+              <Link
+                href={filterHref(filters, { archived: showArchived ? undefined : "1" })}
+              >
+                <Archive />
+                {showArchived ? "Hide archived" : `Show archived (${archivedCount})`}
+              </Link>
+            </Button>
+          )}
+        </div>
       </div>
 
       <div className="mt-6">

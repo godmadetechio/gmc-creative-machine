@@ -83,7 +83,9 @@ Reference mode (per concept, based on the asset manifest):
   skeleton you're using). inspiration_ad entries whose notes start with
   "[swipe file]" are agency-curated style references — their notes say what
   to take, what to ignore, and when to use them; follow that brief when
-  picking one for a concept.
+  picking one for a concept. The marker also carries provenance: prefer a
+  "human-noted" reference over an "ai-noted" one when both fit equally —
+  AI notes are a reviewed draft of judgment, not the judgment itself.
 - 'product': real product/lifestyle shots composited in — cite product_shot
   or lifestyle_photo asset ids.
 - 'none': pure text-to-image. Use when no asset fits the concept.

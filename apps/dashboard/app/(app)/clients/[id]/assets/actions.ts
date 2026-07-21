@@ -188,6 +188,9 @@ export async function promoteAssetToLibrary(
     storage_path: libraryPath,
     notes: asset.notes,
     tags: [...new Set([...(asset.tags ?? []), "promoted"])],
+    // Curated by the operator (candidate scoring + selection) — human
+    // judgment, so the annotation run never rewrites it.
+    annotation_source: asset.notes ? "human" : null,
   });
   if (insertError) {
     return { status: "error", message: insertError.message };
