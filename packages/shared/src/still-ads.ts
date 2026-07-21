@@ -25,7 +25,11 @@ export type ReferenceMode = z.infer<typeof ReferenceMode>;
 // runs.input_json for a still_ads run.
 export const StillAdsInputSchema = z.object({
   concept_count: z.number().int().min(1).max(20).default(10),
-  /** Statics per concept — one per hook (training §2b: hook-first). */
+  /**
+   * Statics per concept — one per hook (training §2b: hook-first). This is
+   * the text-native count; photo-compositing concepts compile extra hooks
+   * (+2, capped at 5) since generation attrition is expected there.
+   */
   variants_per_concept: z.number().int().min(1).max(5).default(3),
   aspects: z.array(AspectRatio).min(1).max(4).default(["4:5"]),
   operator_prompt: z.string().default(""),

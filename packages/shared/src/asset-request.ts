@@ -77,9 +77,21 @@ export function isSimilarRequestDetail(a: string, b: string): boolean {
 }
 
 // runs.input_json for a creative_regen run: re-run ONE creative's
-// generation with a newly-fulfilled real asset as reference.
-export const CreativeRegenInputSchema = z.object({
-  creative_id: z.string().uuid(),
-  asset_id: z.string().uuid(),
-});
+// generation, either with a newly-fulfilled real asset as reference
+// (asset mode) or with rejection feedback appended to the stored prompt
+// (retry mode — salvages near-misses without a full run). Exactly one of
+// asset_id / feedback is set; rows written before retry existed carry only
+// asset_id and still parse.
+export const CreativeRegenInputSchema = z
+  .object({
+    creative_id: z.string().uuid(),
+    /** Asset mode: the fulfilled client_assets id to attach as reference. */
+    asset_id: z.string().uuid().nullable().default(null),
+    /** Retry mode: the rejection feedback to append as revision notes. */
+    feedback: z.string().trim().min(5).nullable().default(null),
+  })
+  .refine(
+    (v) => (v.asset_id != null) !== (v.feedback != null),
+    "set exactly one of asset_id (asset mode) or feedback (retry mode)",
+  );
 export type CreativeRegenInput = z.infer<typeof CreativeRegenInputSchema>;

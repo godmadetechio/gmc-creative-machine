@@ -1,7 +1,7 @@
 "use client";
 
 import { useActionState, useState } from "react";
-import { Check, ExternalLink, Undo2, X } from "lucide-react";
+import { Check, ExternalLink, RefreshCw, Undo2, X } from "lucide-react";
 import { StillConceptSchema, type Creative } from "@gmc/shared";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -19,6 +19,7 @@ import { cn } from "@/lib/utils";
 import {
   approveCreative,
   rejectCreative,
+  retryRejectedCreative,
   undoCreativeReview,
   type CreativeReviewState,
 } from "./actions";
@@ -50,11 +51,17 @@ function ReviewControls({
     CreativeReviewState,
     FormData
   >(undoCreativeReview, null);
+  const [retryState, retryAction, retrying] = useActionState<
+    CreativeReviewState,
+    FormData
+  >(retryRejectedCreative, null);
   const [rejectOpen, setRejectOpen] = useState(false);
 
-  const pending = approving || rejecting || undoing;
+  const pending = approving || rejecting || undoing || retrying;
   const error =
-    [approveState, rejectState, undoState].find((s) => s?.status === "error") ?? null;
+    [approveState, rejectState, undoState, retryState].find(
+      (s) => s?.status === "error",
+    ) ?? null;
   const hidden = (
     <>
       <input type="hidden" name="creative_id" value={creative.id} />
@@ -63,18 +70,47 @@ function ReviewControls({
   );
 
   if (creative.status !== "draft") {
+    const canRetry = creative.status === "rejected" && !!creative.feedback;
     return (
-      <form action={undoAction} className="flex items-center justify-between gap-2">
-        {hidden}
-        {statusBadge(creative.status)}
-        <Button type="submit" variant="ghost" size="sm" disabled={pending}>
-          <Undo2 />
-          Undo
-        </Button>
+      <div className="flex flex-col gap-1">
+        <div className="flex items-center justify-between gap-2">
+          {statusBadge(creative.status)}
+          <div className="flex items-center gap-1">
+            {canRetry && (
+              // Cheap single-image regen with the rejection feedback appended
+              // to the compile prompt — salvages near-misses without a run.
+              <form action={retryAction} className="contents">
+                {hidden}
+                <Button
+                  type="submit"
+                  variant="ghost"
+                  size="sm"
+                  disabled={pending || retryState?.status === "success"}
+                  title="Re-generate this creative with the rejection feedback applied"
+                >
+                  <RefreshCw />
+                  Retry with feedback
+                </Button>
+              </form>
+            )}
+            <form action={undoAction} className="contents">
+              {hidden}
+              <Button type="submit" variant="ghost" size="sm" disabled={pending}>
+                <Undo2 />
+                Undo
+              </Button>
+            </form>
+          </div>
+        </div>
+        {retryState?.status === "success" && (
+          <p className="text-muted-foreground text-xs">
+            {retryState.message ?? "Retry queued."}
+          </p>
+        )}
         {error && error.status === "error" && (
           <p className="text-destructive text-sm">{error.message}</p>
         )}
-      </form>
+      </div>
     );
   }
 

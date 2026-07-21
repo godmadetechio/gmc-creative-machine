@@ -45,7 +45,14 @@ it never sees the concept, the brand kit, or this conversation. Include:
    rule is absolute).
 4. Reference-image handling when the concept has one:
    - identity: "the person in the reference image" is the subject — keep
-     exact likeness, natural skin texture, no beautification.
+     exact likeness, natural skin texture, no beautification. BE
+     CONSERVATIVE with real faces: re-rendering a person into a new scene,
+     pose, or lighting is where visible flaws come from. Prefer layouts that
+     PRESERVE the reference photo as shot — its setting, pose and lighting —
+     and compose the text, graphics and brand elements around or over it
+     (the edit endpoint handles this well). Only direct a re-render when the
+     concept is impossible without one; if the visual_description asks for a
+     new scene, adapt the layout to keep the photo intact instead.
    - style: rebuild the reference's layout/energy/composition with our text
      and brand colors — never copy its words or logos.
    - product: composite the referenced product naturally into the scene,

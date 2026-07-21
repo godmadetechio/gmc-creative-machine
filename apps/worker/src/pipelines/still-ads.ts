@@ -45,6 +45,20 @@ const GENERATION_CONCURRENCY = 4;
 const COMPILE_BATCH_SIZE = 5;
 // Rejection-feedback lines injected into the concept prompt (newest first).
 const MAX_FEEDBACK_LINES = 20;
+// FORMAT RELIABILITY (round-two learnings): photo-compositing variants fail
+// more often than text-native ones, so those concepts over-generate to
+// absorb the expected attrition — 4-5 variants where text-native gets 3.
+const RISKY_EXTRA_VARIANTS = 2;
+const MAX_VARIANTS_PER_CONCEPT = 5;
+// The concept prompt asks for a 60-70% text-native mix; a batch whose
+// photo-compositing share drifts past this only warns — never drops.
+const MAX_PHOTO_COMPOSITE_SHARE = 0.4;
+
+// Photo-compositing concepts composite or re-render real photography —
+// the attrition-prone end of the format mix (identity mode especially).
+function isPhotoCompositing(concept: StillConcept): boolean {
+  return concept.reference_mode === "identity" || concept.reference_mode === "product";
+}
 
 export type StillAdsResult = {
   conceptCount: number;
@@ -286,6 +300,21 @@ export async function runStillAds(
   if (concepts.length > input.concept_count) concepts.length = input.concept_count;
   console.log(`[still_ads] ${concepts.length} concepts passed cross-checks`);
 
+  const photoShare = concepts.filter(isPhotoCompositing).length / concepts.length;
+  if (photoShare > MAX_PHOTO_COMPOSITE_SHARE) {
+    warnings.push(
+      `format mix drifted: ${Math.round(photoShare * 100)}% of concepts are photo-compositing (target ≤${Math.round(MAX_PHOTO_COMPOSITE_SHARE * 100)}% — text-native formats carry the reliable core of the batch)`,
+    );
+  }
+
+  // Variants per concept: text-native concepts use the requested count;
+  // photo-compositing concepts get extra hooks compiled so post-attrition
+  // yield matches. Naturally capped by how many hooks the concept carries.
+  const variantCountFor = (concept: StillConcept) =>
+    isPhotoCompositing(concept)
+      ? Math.min(MAX_VARIANTS_PER_CONCEPT, input.variants_per_concept + RISKY_EXTRA_VARIANTS)
+      : input.variants_per_concept;
+
   // ── 3. Prompt compiler (batched) ─────────────────────────────────────────
   type VariantKey = { concept_index: number; hook_index: number };
   const compiled = new Map<string, string>(); // "ci:hi" -> prompt
@@ -295,7 +324,7 @@ export async function runStillAds(
     const batch = concepts.slice(start, start + COMPILE_BATCH_SIZE);
     const wanted: VariantKey[] = batch.flatMap((concept, bi) =>
       concept.hooks
-        .slice(0, input.variants_per_concept)
+        .slice(0, variantCountFor(concept))
         .map((_, hi) => ({ concept_index: start + bi, hook_index: hi })),
     );
     const label = `image-compiler[${start}-${start + batch.length - 1}]`;
