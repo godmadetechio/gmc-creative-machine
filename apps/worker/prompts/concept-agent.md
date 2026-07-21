@@ -80,7 +80,10 @@ Reference mode (per concept, based on the asset manifest):
   asset ids. Use for founder-style, personal-brand formats.
 - 'style': rebuild a reference ad's layout/energy with OUR copy and brand —
   cite the inspiration_ad or example_ad asset id (usually the winner whose
-  skeleton you're using).
+  skeleton you're using). inspiration_ad entries whose notes start with
+  "[swipe file]" are agency-curated style references — their notes say what
+  to take, what to ignore, and when to use them; follow that brief when
+  picking one for a concept.
 - 'product': real product/lifestyle shots composited in — cite product_shot
   or lifestyle_photo asset ids.
 - 'none': pure text-to-image. Use when no asset fits the concept.

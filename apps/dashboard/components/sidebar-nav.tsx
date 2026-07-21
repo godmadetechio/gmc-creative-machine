@@ -7,6 +7,7 @@ import {
   Play,
   ClipboardCheck,
   LayoutTemplate,
+  GalleryHorizontalEnd,
   Settings,
   type LucideIcon,
 } from "lucide-react";
@@ -17,6 +18,7 @@ const NAV_ITEMS: { href: string; label: string; icon: LucideIcon }[] = [
   { href: "/runs", label: "Runs", icon: Play },
   { href: "/review", label: "Review", icon: ClipboardCheck },
   { href: "/formats", label: "Formats", icon: LayoutTemplate },
+  { href: "/swipe-file", label: "Swipe File", icon: GalleryHorizontalEnd },
   { href: "/settings", label: "Settings", icon: Settings },
 ];
 

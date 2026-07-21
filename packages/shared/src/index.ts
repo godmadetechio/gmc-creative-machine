@@ -7,3 +7,4 @@ export * from "./asset";
 export * from "./competitor";
 export * from "./format-library";
 export * from "./still-ads";
+export * from "./reference-library";

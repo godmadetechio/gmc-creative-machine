@@ -5,6 +5,7 @@ import {
   BookOpenText,
   ExternalLink,
   GalleryVerticalEnd,
+  GalleryHorizontalEnd,
   ImageIcon,
   Pencil,
   Sparkles,
@@ -164,6 +165,7 @@ export default async function ClientDetailPage({
     competitorsResult,
     assetsResult,
     creativesResult,
+    referencePicksResult,
   ] = await Promise.all([
       supabase.from("clients").select("*").eq("id", id).maybeSingle(),
       supabase
@@ -205,6 +207,10 @@ export default async function ClientDetailPage({
         .from("creatives")
         .select("id, status")
         .eq("client_id", id),
+      supabase
+        .from("client_reference_picks")
+        .select("id", { count: "exact", head: true })
+        .eq("client_id", id),
     ]);
 
   if (!clientResult.data) notFound();
@@ -224,6 +230,7 @@ export default async function ClientDetailPage({
     CompetitorSchema.parse(row),
   );
   const assetCount = assetsResult.count ?? 0;
+  const referencePickCount = referencePicksResult.count ?? 0;
   const creativeRows = creativesResult.data ?? [];
   const draftCreatives = creativeRows.filter((c) => c.status === "draft").length;
   const selectedWinners = candidates.filter((c) => c.status === "selected").length;
@@ -303,6 +310,15 @@ export default async function ClientDetailPage({
               ? `${assetCount} asset${assetCount === 1 ? "" : "s"}`
               : "Upload assets"}
             {client.brand_json && " · brand kit set"}
+          </Link>
+        </Button>
+        <h2 className="ml-4 text-lg font-semibold">References</h2>
+        <Button asChild variant="outline" size="sm">
+          <Link href={`/clients/${client.id}/references`}>
+            <GalleryHorizontalEnd />
+            {referencePickCount > 0
+              ? `${referencePickCount} picked from the swipe file`
+              : "Pick from the swipe file"}
           </Link>
         </Button>
       </div>

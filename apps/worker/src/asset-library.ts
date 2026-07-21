@@ -3,6 +3,8 @@ import {
   AssetKind,
   BrandKitSchema,
   ClientAssetSchema,
+  REFERENCE_LIBRARY_BUCKET,
+  ReferenceLibraryEntrySchema,
   type BrandKit,
   type ClientAsset,
 } from "@gmc/shared";
@@ -18,6 +20,8 @@ const DEFAULT_SIGNED_URL_TTL_SECONDS = 6 * 60 * 60;
 export type ManifestAsset = ClientAsset & {
   /** Signed URL, or null if signing failed (asset still listed so the agent knows it exists). */
   url: string | null;
+  /** Set on entries merged in from the global reference library (swipe file). */
+  from_swipe_file?: true;
 };
 
 export type AssetManifest = {
@@ -34,11 +38,16 @@ export async function getAssetManifest(
 ): Promise<AssetManifest> {
   const ttl = opts.signedUrlTtlSeconds ?? DEFAULT_SIGNED_URL_TTL_SECONDS;
 
-  const [clientResult, assetsResult] = await Promise.all([
+  const [clientResult, assetsResult, picksResult] = await Promise.all([
     supabase.from("clients").select("brand_json").eq("id", clientId).single(),
     supabase
       .from("client_assets")
       .select("*")
+      .eq("client_id", clientId)
+      .order("created_at", { ascending: true }),
+    supabase
+      .from("client_reference_picks")
+      .select("note_override, reference:reference_library(*)")
       .eq("client_id", clientId)
       .order("created_at", { ascending: true }),
   ]);
@@ -48,15 +57,53 @@ export async function getAssetManifest(
   if (assetsResult.error) {
     throw new Error(`Failed to load assets for ${clientId}: ${assetsResult.error.message}`);
   }
+  if (picksResult.error) {
+    throw new Error(
+      `Failed to load reference picks for ${clientId}: ${picksResult.error.message}`,
+    );
+  }
 
   const brandParsed = BrandKitSchema.nullable().safeParse(
     clientResult.data?.brand_json ?? null,
   );
   const brand = brandParsed.success ? brandParsed.data : null;
 
-  const assets = (assetsResult.data ?? []).map((row) =>
-    ClientAssetSchema.parse(row),
-  );
+  const clientAssets: (ClientAsset & { from_swipe_file?: true })[] = (
+    assetsResult.data ?? []
+  ).map((row) => ClientAssetSchema.parse(row));
+
+  // Picked swipe-file references join the style pool as inspiration_ad
+  // entries alongside the client's own competitor winners — one pool for the
+  // concept agent, one id space for referenced_asset_ids. Resolved note:
+  // per-client override beats the library brief. Archived references drop
+  // out of runs without unpicking.
+  for (const row of picksResult.data ?? []) {
+    const pick = row as unknown as { note_override: string | null; reference: unknown };
+    const parsed = ReferenceLibraryEntrySchema.safeParse(pick.reference);
+    if (!parsed.success || parsed.data.status !== "active") continue;
+    const reference = parsed.data;
+    const notes = [
+      `[swipe file] ${reference.title}`,
+      pick.note_override ?? reference.notes,
+      reference.format_name ? `exemplifies format: ${reference.format_name}` : null,
+    ]
+      .filter((part): part is string => !!part)
+      .join(" · ");
+    clientAssets.push({
+      id: reference.id,
+      client_id: clientId,
+      kind: "inspiration_ad",
+      bucket: REFERENCE_LIBRARY_BUCKET,
+      storage_path: reference.storage_path,
+      drive_file_id: null,
+      notes,
+      tags: reference.tags,
+      source_candidate_id: null,
+      created_at: reference.created_at,
+      from_swipe_file: true,
+    });
+  }
+  const assets = clientAssets;
 
   // Sign per bucket in one batch each (uploads live in client-assets,
   // auto-registered inspiration ads in ad-media).
