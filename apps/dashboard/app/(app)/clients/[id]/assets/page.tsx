@@ -18,6 +18,7 @@ import { ASSET_KIND_LABELS } from "./asset-kinds";
 import { AssetUploader } from "./asset-uploader";
 import { BrandKitCard } from "./brand-kit-card";
 import { DeleteAssetButton } from "./delete-asset-button";
+import { PromoteAssetButton } from "./promote-asset-button";
 
 const SIGNED_URL_TTL_SECONDS = 60 * 60;
 
@@ -73,7 +74,10 @@ function AssetCard({
             <span className="break-all">{fileName(asset.storage_path)}</span>
           </a>
         )}
-        <div className="absolute top-2 right-2">
+        <div className="absolute top-2 right-2 flex gap-1">
+          {(asset.kind === "inspiration_ad" || asset.kind === "example_ad") && (
+            <PromoteAssetButton assetId={asset.id} clientId={asset.client_id} />
+          )}
           <DeleteAssetButton
             assetId={asset.id}
             clientId={asset.client_id}

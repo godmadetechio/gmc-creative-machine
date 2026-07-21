@@ -6,6 +6,7 @@ import {
   AssetKind,
   BrandKitSchema,
   CLIENT_ASSETS_BUCKET,
+  REFERENCE_LIBRARY_BUCKET,
 } from "@gmc/shared";
 import { createClient } from "@/lib/supabase/server";
 
@@ -113,6 +114,87 @@ export async function deleteAsset(
 
   revalidatePath(`/clients/${client_id}/assets`);
   revalidatePath(`/clients/${client_id}`);
+  return { status: "success" };
+}
+
+const PromoteInputSchema = z.object({
+  asset_id: z.string().uuid(),
+  client_id: z.string().uuid(),
+});
+
+// "Promote to library": copies a client inspiration ad (file + metadata)
+// into the GLOBAL reference library so every client can pick it. The client
+// asset stays untouched — the library gets its own copy of the file, so
+// archiving/deleting either side never breaks the other.
+export async function promoteAssetToLibrary(
+  _prevState: AssetActionState,
+  formData: FormData,
+): Promise<AssetActionState> {
+  const parsed = PromoteInputSchema.safeParse({
+    asset_id: formData.get("asset_id"),
+    client_id: formData.get("client_id"),
+  });
+  if (!parsed.success) {
+    return { status: "error", message: "Invalid input" };
+  }
+  const { asset_id, client_id } = parsed.data;
+
+  const supabase = await createClient();
+  const { data: asset, error: fetchError } = await supabase
+    .from("client_assets")
+    .select("id, kind, bucket, storage_path, notes, tags")
+    .eq("id", asset_id)
+    .eq("client_id", client_id)
+    .maybeSingle();
+  if (fetchError) {
+    return { status: "error", message: fetchError.message };
+  }
+  if (!asset) {
+    return { status: "error", message: "Asset not found" };
+  }
+  if (asset.kind !== "inspiration_ad" && asset.kind !== "example_ad") {
+    return {
+      status: "error",
+      message: "Only inspiration/example ads can be promoted to the swipe file.",
+    };
+  }
+
+  const { data: blob, error: downloadError } = await supabase.storage
+    .from(asset.bucket)
+    .download(asset.storage_path);
+  if (downloadError || !blob) {
+    return {
+      status: "error",
+      message: `Could not read the file: ${downloadError?.message ?? "download failed"}`,
+    };
+  }
+
+  const extension = asset.storage_path.match(/\.(\w{1,8})$/)?.[1] ?? "bin";
+  const libraryPath = `promoted/${crypto.randomUUID()}.${extension}`;
+  const { error: uploadError } = await supabase.storage
+    .from(REFERENCE_LIBRARY_BUCKET)
+    .upload(libraryPath, blob, {
+      contentType: blob.type || "application/octet-stream",
+    });
+  if (uploadError) {
+    return { status: "error", message: uploadError.message };
+  }
+
+  // Inspiration notes read "Advertiser · score N · skeleton" — the first
+  // segment makes a decent title, the rest stays in the brief.
+  const noteParts = (asset.notes ?? "").split(" · ").filter(Boolean);
+  const { error: insertError } = await supabase.from("reference_library").insert({
+    title: noteParts[0] || "Promoted client reference",
+    storage_path: libraryPath,
+    notes: asset.notes,
+    tags: [...new Set([...(asset.tags ?? []), "promoted"])],
+  });
+  if (insertError) {
+    return { status: "error", message: insertError.message };
+  }
+
+  revalidatePath("/swipe-file");
+  revalidatePath(`/clients/${client_id}/assets`);
   return { status: "success" };
 }
 
