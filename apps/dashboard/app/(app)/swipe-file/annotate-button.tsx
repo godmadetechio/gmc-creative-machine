@@ -1,7 +1,7 @@
 "use client";
 
 import { useActionState } from "react";
-import { ScanEye } from "lucide-react";
+import { Loader2, ScanEye } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   enqueueReferenceAnnotation,
@@ -25,7 +25,7 @@ export function AnnotateButton({
   return (
     <form action={formAction} className="flex flex-col items-end gap-1">
       <Button type="submit" disabled={pending || runActive || unannotatedCount === 0}>
-        <ScanEye />
+        {runActive || pending ? <Loader2 className="animate-spin" /> : <ScanEye />}
         {runActive
           ? "Annotating…"
           : pending

@@ -55,6 +55,7 @@ export async function registerReference(
   const { error } = await supabase.from("reference_library").insert({
     ...parsed.data,
     annotation_source: parsed.data.notes ? "human" : null,
+    annotated_at: parsed.data.notes ? new Date().toISOString() : null,
   });
   if (error) {
     return { status: "error", message: error.message };
@@ -170,7 +171,11 @@ export async function updateReference(
   // needs_review row that gets edited is thereby reviewed.
   const { error } = await supabase
     .from("reference_library")
-    .update({ ...fields, annotation_source: "human" })
+    .update({
+      ...fields,
+      annotation_source: "human",
+      annotated_at: new Date().toISOString(),
+    })
     .eq("id", reference_id);
   if (error) {
     return { status: "error", message: error.message };

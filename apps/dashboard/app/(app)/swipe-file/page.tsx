@@ -1,5 +1,6 @@
 import Link from "next/link";
-import { Archive } from "lucide-react";
+import { Archive, CheckCircle2, Loader2, ScanEye, Sparkles } from "lucide-react";
+import { z } from "zod";
 import {
   REFERENCE_LIBRARY_BUCKET,
   ReferenceLibraryEntrySchema,
@@ -16,7 +17,13 @@ import { ReferenceUploader } from "./reference-uploader";
 
 const SIGNED_URL_TTL_SECONDS = 60 * 60;
 
-type Filters = { tag?: string; vertical?: string; format?: string; archived?: string };
+type Filters = {
+  tag?: string;
+  vertical?: string;
+  format?: string;
+  status?: string;
+  archived?: string;
+};
 
 function filterHref(current: Filters, patch: Filters): string {
   const merged = { ...current, ...patch };
@@ -78,7 +85,7 @@ export default async function SwipeFilePage({
       .order("name"),
     supabase
       .from("runs")
-      .select("id")
+      .select("id, status, started_at, input_json")
       .eq("type", "reference_annotate")
       .in("status", ["queued", "running"])
       .limit(1),
@@ -101,6 +108,7 @@ export default async function SwipeFilePage({
     .filter(
       (r) =>
         (showArchived ? true : r.status !== "archived") &&
+        (!filters.status || r.status === filters.status) &&
         (!filters.tag || r.tags.includes(filters.tag)) &&
         (!filters.vertical || r.vertical === filters.vertical) &&
         (!filters.format || r.format_name === filters.format),
@@ -115,7 +123,31 @@ export default async function SwipeFilePage({
   const unannotatedCount = all.filter(
     (r) => r.annotation_source === null && r.status !== "archived",
   ).length;
-  const annotateRunActive = (annotateRunResult.data?.length ?? 0) > 0;
+  // Approved = in the pool clients pick from, with reviewed notes (human-
+  // written or accepted-AI).
+  const approvedCount = all.filter(
+    (r) => r.status === "active" && r.annotation_source !== null,
+  ).length;
+
+  // Live run progress: rows the active run has annotated so far (stamped
+  // annotated_at after the run started) vs what it set out to do.
+  const annotateRun = annotateRunResult.data?.[0] ?? null;
+  const annotateRunActive = annotateRun !== null;
+  let runProgress: { done: number; total: number } | null = null;
+  if (annotateRun?.started_at) {
+    const startedAt = annotateRun.started_at as string;
+    const limitParsed = z
+      .object({ limit: z.number().int() })
+      .safeParse(annotateRun.input_json);
+    const limit = limitParsed.success ? limitParsed.data.limit : 40;
+    const done = all.filter(
+      (r) =>
+        r.annotation_source === "ai" &&
+        r.annotated_at !== null &&
+        r.annotated_at > startedAt,
+    ).length;
+    runProgress = { done, total: Math.min(limit, done + unannotatedCount) };
+  }
 
   const urlByPath = new Map<string, string>();
   const paths = references.map((r) => r.storage_path);
@@ -138,8 +170,6 @@ export default async function SwipeFilePage({
             The agency-wide reference library — curated style references every
             client can pick from. Notes are the brief the concept agent reads:
             what to take, what to ignore, when to use it.
-            {needsReviewCount > 0 &&
-              ` ${needsReviewCount} AI annotation${needsReviewCount === 1 ? "" : "s"} awaiting review.`}
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -160,12 +190,51 @@ export default async function SwipeFilePage({
         </div>
       </div>
 
+      {/* Annotation status strip */}
+      <div className="mt-5 flex flex-wrap items-center gap-2 text-sm">
+        <span className="bg-muted text-muted-foreground inline-flex items-center gap-1.5 rounded-md px-2.5 py-1">
+          <ScanEye className="size-3.5" />
+          {unannotatedCount} unannotated
+        </span>
+        <Link
+          href={filterHref(filters, {
+            status: filters.status === "needs_review" ? undefined : "needs_review",
+          })}
+          className={
+            filters.status === "needs_review"
+              ? "inline-flex items-center gap-1.5 rounded-md bg-amber-500/90 px-2.5 py-1 text-white"
+              : "inline-flex items-center gap-1.5 rounded-md bg-amber-500/15 px-2.5 py-1 text-amber-500 hover:bg-amber-500/25"
+          }
+        >
+          <Sparkles className="size-3.5" />
+          {needsReviewCount} AI notes to review
+        </Link>
+        <span className="inline-flex items-center gap-1.5 rounded-md bg-emerald-500/15 px-2.5 py-1 text-emerald-500">
+          <CheckCircle2 className="size-3.5" />
+          {approvedCount} approved
+        </span>
+        {annotateRunActive && (
+          <span className="text-muted-foreground inline-flex items-center gap-1.5">
+            <Loader2 className="size-3.5 animate-spin" />
+            {runProgress
+              ? `annotation run in progress: ${runProgress.done} of ${runProgress.total} done`
+              : "annotation run queued…"}
+          </span>
+        )}
+      </div>
+
       <div className="mt-6">
         <ReferenceUploader />
       </div>
 
       {all.length > 0 && (
         <div className="mt-5 flex flex-col gap-2">
+          <FilterRow
+            label="Status"
+            values={["needs_review"]}
+            active={filters.status}
+            hrefFor={(v) => filterHref(filters, { status: v })}
+          />
           <FilterRow
             label="Tag"
             values={tags}
