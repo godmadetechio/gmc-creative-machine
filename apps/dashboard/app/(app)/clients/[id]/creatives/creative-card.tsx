@@ -1,8 +1,15 @@
 "use client";
 
-import { useActionState, useState } from "react";
+import {
+  useActionState,
+  useEffect,
+  useOptimistic,
+  useRef,
+  useState,
+  type MutableRefObject,
+} from "react";
 import { Check, ExternalLink, RefreshCw, Undo2, X } from "lucide-react";
-import { StillConceptSchema, type Creative } from "@gmc/shared";
+import { StillConceptSchema, type Creative, type CreativeStatus } from "@gmc/shared";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -15,6 +22,7 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
+import { useReviewCard } from "@/components/review-keys";
 import { cn } from "@/lib/utils";
 import {
   approveCreative,
@@ -32,12 +40,26 @@ function statusBadge(status: Creative["status"]) {
   return <Badge variant="outline">Draft</Badge>;
 }
 
+export type ReviewControlsHandle = {
+  approve: () => void;
+  reject: () => void;
+  undo: () => void;
+};
+
 function ReviewControls({
   creative,
+  status,
+  onOptimistic,
   compact,
+  handleRef,
 }: {
   creative: Creative;
+  /** Optimistic status — flips immediately on submit, reconciled by the server. */
+  status: Creative["status"];
+  onOptimistic: (next: CreativeStatus) => void;
   compact?: boolean;
+  /** Set by the grid card so keyboard shortcuts can drive these controls. */
+  handleRef?: MutableRefObject<ReviewControlsHandle | null>;
 }) {
   const [approveState, approveAction, approving] = useActionState<
     CreativeReviewState,
@@ -56,6 +78,8 @@ function ReviewControls({
     FormData
   >(retryRejectedCreative, null);
   const [rejectOpen, setRejectOpen] = useState(false);
+  const approveFormRef = useRef<HTMLFormElement>(null);
+  const undoFormRef = useRef<HTMLFormElement>(null);
 
   const pending = approving || rejecting || undoing || retrying;
   const error =
@@ -69,12 +93,41 @@ function ReviewControls({
     </>
   );
 
-  if (creative.status !== "draft") {
-    const canRetry = creative.status === "rejected" && !!creative.feedback;
+  // Optimistic wrappers: flip the card before the server round-trip. The
+  // dispatch runs inside the same transition, so the optimistic value holds
+  // until revalidation reconciles (or an error reverts it).
+  const approveWithOptimism = (formData: FormData) => {
+    onOptimistic("approved");
+    approveAction(formData);
+  };
+  const rejectWithOptimism = (formData: FormData) => {
+    onOptimistic("rejected");
+    rejectAction(formData);
+  };
+  const undoWithOptimism = (formData: FormData) => {
+    onOptimistic("draft");
+    undoAction(formData);
+  };
+
+  useEffect(() => {
+    if (!handleRef) return;
+    handleRef.current = {
+      approve: () => approveFormRef.current?.requestSubmit(),
+      // Feedback is required for rejection, so R opens + focuses the field.
+      reject: () => setRejectOpen(true),
+      undo: () => undoFormRef.current?.requestSubmit(),
+    };
+    return () => {
+      handleRef.current = null;
+    };
+  }, [handleRef]);
+
+  if (status !== "draft") {
+    const canRetry = status === "rejected" && !!creative.feedback;
     return (
       <div className="flex flex-col gap-1">
         <div className="flex items-center justify-between gap-2">
-          {statusBadge(creative.status)}
+          {statusBadge(status)}
           <div className="flex items-center gap-1">
             {canRetry && (
               // Cheap single-image regen with the rejection feedback appended
@@ -93,7 +146,7 @@ function ReviewControls({
                 </Button>
               </form>
             )}
-            <form action={undoAction} className="contents">
+            <form action={undoWithOptimism} className="contents" ref={undoFormRef}>
               {hidden}
               <Button type="submit" variant="ghost" size="sm" disabled={pending}>
                 <Undo2 />
@@ -117,7 +170,7 @@ function ReviewControls({
   return (
     <div className="flex flex-col gap-2">
       {rejectOpen ? (
-        <form action={rejectAction} className="flex flex-col gap-2">
+        <form action={rejectWithOptimism} className="flex flex-col gap-2">
           {hidden}
           <Textarea
             name="feedback"
@@ -144,7 +197,7 @@ function ReviewControls({
         </form>
       ) : (
         <div className="flex flex-col gap-2">
-          <form action={approveAction} className="contents">
+          <form action={approveWithOptimism} className="contents" ref={approveFormRef}>
             {hidden}
             {!compact && (
               <Textarea
@@ -195,8 +248,25 @@ export function CreativeCard({
   const concept = StillConceptSchema.safeParse(creative.concept_json);
   const dialogUrl = fullUrl ?? previewUrl;
 
+  // Optimistic status shared by both control instances (dialog + compact);
+  // the compact one also exposes an imperative handle for keyboard review.
+  const [status, setOptimisticStatus] = useOptimistic(creative.status);
+  const controlsHandleRef = useRef<ReviewControlsHandle | null>(null);
+  const { ref: cardRef, focused } = useReviewCard(creative.id, {
+    approve: () => controlsHandleRef.current?.approve(),
+    reject: () => controlsHandleRef.current?.reject(),
+    undo: () => controlsHandleRef.current?.undo(),
+  });
+
   return (
-    <Card className={cn("overflow-hidden py-0", creative.status === "rejected" && "opacity-60")}>
+    <Card
+      ref={cardRef}
+      className={cn(
+        "overflow-hidden py-0",
+        status === "rejected" && "opacity-60",
+        focused && "ring-primary ring-2 ring-offset-2",
+      )}
+    >
       <Dialog>
         <DialogTrigger asChild>
           <button
@@ -219,7 +289,7 @@ export function CreativeCard({
                 No preview
               </div>
             )}
-            <div className="absolute top-2 right-2">{statusBadge(creative.status)}</div>
+            <div className="absolute top-2 right-2">{statusBadge(status)}</div>
           </button>
         </DialogTrigger>
         <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-3xl">
@@ -289,7 +359,7 @@ export function CreativeCard({
                   )}
                 </>
               )}
-              {creative.feedback && creative.status === "rejected" && (
+              {creative.feedback && status === "rejected" && (
                 <div>
                   <p className="text-muted-foreground text-xs font-medium uppercase">
                     Rejection feedback
@@ -297,7 +367,11 @@ export function CreativeCard({
                   <p>{creative.feedback}</p>
                 </div>
               )}
-              <ReviewControls creative={creative} />
+              <ReviewControls
+                creative={creative}
+                status={status}
+                onOptimistic={setOptimisticStatus}
+              />
             </div>
           </div>
         </DialogContent>
@@ -313,7 +387,13 @@ export function CreativeCard({
             {creative.cost_usd != null && ` · $${creative.cost_usd.toFixed(2)}`}
           </p>
         </div>
-        <ReviewControls creative={creative} compact />
+        <ReviewControls
+          creative={creative}
+          status={status}
+          onOptimistic={setOptimisticStatus}
+          compact
+          handleRef={controlsHandleRef}
+        />
       </CardContent>
     </Card>
   );

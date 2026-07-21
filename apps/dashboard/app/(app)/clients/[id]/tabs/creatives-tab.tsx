@@ -9,6 +9,7 @@ import {
 } from "@gmc/shared";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
+import { ReviewKeysHint, ReviewKeysProvider } from "@/components/review-keys";
 import { signMany } from "@/lib/storage";
 import { createClient } from "@/lib/supabase/server";
 import { CreativeCard } from "../creatives/creative-card";
@@ -218,22 +219,27 @@ export async function CreativesTab({
           </CardContent>
         </Card>
       ) : (
-        <div className="mt-6 grid grid-cols-2 gap-4 md:grid-cols-3 xl:grid-cols-4">
-          {creatives.map((creative) => {
-            const primary = creative.storage_path
-              ? signed.get(creative.storage_path)
-              : undefined;
-            return (
-              <CreativeCard
-                key={creative.id}
-                creative={creative}
-                previewUrl={primary?.thumbUrl ?? null}
-                fullUrl={primary?.url ?? null}
-                aspectUrls={aspectUrls(creative)}
-              />
-            );
-          })}
-        </div>
+        <ReviewKeysProvider>
+          <div className="mt-4">
+            <ReviewKeysHint />
+          </div>
+          <div className="mt-3 grid grid-cols-2 gap-4 md:grid-cols-3 xl:grid-cols-4">
+            {creatives.map((creative) => {
+              const primary = creative.storage_path
+                ? signed.get(creative.storage_path)
+                : undefined;
+              return (
+                <CreativeCard
+                  key={creative.id}
+                  creative={creative}
+                  previewUrl={primary?.thumbUrl ?? null}
+                  fullUrl={primary?.url ?? null}
+                  aspectUrls={aspectUrls(creative)}
+                />
+              );
+            })}
+          </div>
+        </ReviewKeysProvider>
       )}
 
       {winning.length > 0 && (

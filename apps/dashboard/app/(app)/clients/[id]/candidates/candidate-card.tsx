@@ -1,12 +1,13 @@
 "use client";
 
-import { useActionState } from "react";
+import { useActionState, useOptimistic, useRef } from "react";
 import { Check, ChevronDown, ExternalLink, Undo2, X } from "lucide-react";
 import { z } from "zod";
-import type { AdCandidate } from "@gmc/shared";
+import { CandidateStatus, type AdCandidate } from "@gmc/shared";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { useReviewCard } from "@/components/review-keys";
 import { cn } from "@/lib/utils";
 import { reviewCandidate, type ReviewState } from "./actions";
 
@@ -48,19 +49,37 @@ export function CandidateCard({
     reviewCandidate,
     null,
   );
+  // Optimistic status: the card flips the moment a decision is submitted;
+  // the server revalidation reconciles (or reverts on error).
+  const [status, setOptimisticStatus] = useOptimistic(candidate.status);
+  const submitWithOptimism = (formData: FormData) => {
+    const decision = CandidateStatus.safeParse(formData.get("decision"));
+    if (decision.success) setOptimisticStatus(decision.data);
+    formAction(formData);
+  };
+
+  const selectButtonRef = useRef<HTMLButtonElement>(null);
+  const rejectButtonRef = useRef<HTMLButtonElement>(null);
+  const undoButtonRef = useRef<HTMLButtonElement>(null);
+  const { ref: cardRef, focused } = useReviewCard(candidate.id, {
+    approve: () => selectButtonRef.current?.click(),
+    reject: () => rejectButtonRef.current?.click(),
+    undo: () => undoButtonRef.current?.click(),
+  });
 
   const rationale = RationaleSchema.safeParse(candidate.match_rationale_json);
   const r = rationale.success ? rationale.data : {};
   const preview =
     mirroredPreviewUrl ?? (candidate.media_urls ?? []).find(isImageUrl);
-  const reviewed = candidate.status !== "candidate";
+  const reviewed = status !== "candidate";
 
   return (
     <Card
+      ref={cardRef}
       className={cn(
         "overflow-hidden py-0",
-        (candidate.status === "rejected" || candidate.status === "superseded") &&
-          "opacity-60",
+        (status === "rejected" || status === "superseded") && "opacity-60",
+        focused && "ring-primary ring-2 ring-offset-2",
       )}
     >
       <div className="bg-muted relative aspect-video">
@@ -155,28 +174,29 @@ export function CandidateCard({
           </div>
         </details>
 
-        <form action={formAction} className="flex flex-col gap-1.5">
+        <form action={submitWithOptimism} className="flex flex-col gap-1.5">
           <input type="hidden" name="candidate_id" value={candidate.id} />
           <input type="hidden" name="client_id" value={candidate.client_id} />
           {reviewed ? (
             <div className="flex items-center justify-between gap-2">
               <Badge
                 variant={
-                  candidate.status === "selected"
+                  status === "selected"
                     ? "default"
-                    : candidate.status === "superseded"
+                    : status === "superseded"
                       ? "outline"
                       : "secondary"
                 }
               >
-                {candidate.status === "selected"
+                {status === "selected"
                   ? "Selected"
-                  : candidate.status === "superseded"
+                  : status === "superseded"
                     ? "Superseded"
                     : "Rejected"}
                 {candidate.reviewed_by && ` · ${candidate.reviewed_by}`}
               </Badge>
               <Button
+                ref={undoButtonRef}
                 type="submit"
                 name="decision"
                 value="candidate"
@@ -185,12 +205,13 @@ export function CandidateCard({
                 disabled={pending}
               >
                 <Undo2 />
-                {candidate.status === "superseded" ? "Restore" : "Undo"}
+                {status === "superseded" ? "Restore" : "Undo"}
               </Button>
             </div>
           ) : (
             <div className="grid grid-cols-2 gap-2">
               <Button
+                ref={selectButtonRef}
                 type="submit"
                 name="decision"
                 value="selected"
@@ -200,6 +221,7 @@ export function CandidateCard({
                 Select
               </Button>
               <Button
+                ref={rejectButtonRef}
                 type="submit"
                 name="decision"
                 value="rejected"

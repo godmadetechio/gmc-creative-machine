@@ -4,6 +4,7 @@ import { AdCandidateSchema, type AdCandidate, type Client } from "@gmc/shared";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { PaginationBar } from "@/components/pagination-bar";
+import { ReviewKeysHint, ReviewKeysProvider } from "@/components/review-keys";
 import { SearchInput } from "@/components/search-input";
 import { ilikePattern, PAGE_SIZE, parsePageParams } from "@/lib/pagination";
 import { adMediaThumbUrl } from "@/lib/storage";
@@ -200,48 +201,55 @@ export async function SelectionTab({
         </div>
       </div>
 
-      {pending.length === 0 ? (
-        <p className="text-muted-foreground mt-2 text-sm">
-          {pendingCount === 0 && !q
-            ? "All caught up — nothing waiting for review."
-            : "Nothing on this page — adjust the search or go back a page."}
-        </p>
-      ) : (
-        sortedGroups.map(([advertiser, ads]) => (
-          <section key={advertiser} className="mt-6">
-            <h3 className="flex items-baseline gap-2 font-medium">
-              {advertiser}
-              <span className="text-muted-foreground text-sm font-normal">
-                {ads.length} {ads.length === 1 ? "ad" : "ads"} · top score{" "}
-                {ads[0]?.match_score ?? "—"}
-              </span>
-            </h3>
-            <CandidateGrid candidates={ads} />
-          </section>
-        ))
-      )}
-      <div className="mt-4">
-        <PaginationBar
-          page={page}
-          totalCount={pendingCount}
-          makeHref={(p) => makeHref(p)}
-          label="pending ads"
-        />
-      </div>
+      <ReviewKeysProvider>
+        {pending.length > 0 && (
+          <div className="mt-2">
+            <ReviewKeysHint approveLabel="select" />
+          </div>
+        )}
+        {pending.length === 0 ? (
+          <p className="text-muted-foreground mt-2 text-sm">
+            {pendingCount === 0 && !q
+              ? "All caught up — nothing waiting for review."
+              : "Nothing on this page — adjust the search or go back a page."}
+          </p>
+        ) : (
+          sortedGroups.map(([advertiser, ads]) => (
+            <section key={advertiser} className="mt-6">
+              <h3 className="flex items-baseline gap-2 font-medium">
+                {advertiser}
+                <span className="text-muted-foreground text-sm font-normal">
+                  {ads.length} {ads.length === 1 ? "ad" : "ads"} · top score{" "}
+                  {ads[0]?.match_score ?? "—"}
+                </span>
+              </h3>
+              <CandidateGrid candidates={ads} />
+            </section>
+          ))
+        )}
+        <div className="mt-4">
+          <PaginationBar
+            page={page}
+            totalCount={pendingCount}
+            makeHref={(p) => makeHref(p)}
+            label="pending ads"
+          />
+        </div>
 
-      {reviewed.length > 0 && (
-        <>
-          <h2 className="mt-10 text-lg font-semibold">
-            Reviewed ({reviewedCount})
-            {reviewedCount > reviewed.length && (
-              <span className="text-muted-foreground ml-2 text-sm font-normal">
-                showing the latest {reviewed.length}
-              </span>
-            )}
-          </h2>
-          <CandidateGrid candidates={reviewed} />
-        </>
-      )}
+        {reviewed.length > 0 && (
+          <>
+            <h2 className="mt-10 text-lg font-semibold">
+              Reviewed ({reviewedCount})
+              {reviewedCount > reviewed.length && (
+                <span className="text-muted-foreground ml-2 text-sm font-normal">
+                  showing the latest {reviewed.length}
+                </span>
+              )}
+            </h2>
+            <CandidateGrid candidates={reviewed} />
+          </>
+        )}
+      </ReviewKeysProvider>
 
       {showSuperseded && superseded.length > 0 && (
         <>
