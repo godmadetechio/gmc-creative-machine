@@ -2,6 +2,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Run, RunType } from "@gmc/shared";
 import { briefSuggestionsHandler } from "./brief-suggestions";
 import { buyerBrainHandler } from "./buyer-brain";
+import { creativeRegenHandler } from "./creative-regen";
 import { creativeSelectionHandler } from "./creative-selection";
 import { formatScanHandler } from "./format-scan";
 import { referenceAnnotateHandler } from "./reference-annotate";
@@ -39,4 +40,5 @@ export const pipelines: Record<RunType, PipelineHandler> = {
   format_scan: formatScanHandler,
   reference_annotate: referenceAnnotateHandler,
   brief_suggestions: briefSuggestionsHandler,
+  creative_regen: creativeRegenHandler,
 };

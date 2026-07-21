@@ -1,4 +1,8 @@
 import { z } from "zod";
+import {
+  AgentAssetRequestSchema,
+  MAX_ASSET_REQUESTS_PER_RUN,
+} from "./asset-request";
 import { CreativeModel, CreativeStatus, CreativeType } from "./enums";
 
 // Still Ad Creation (Phase 3) schemas — see GODMADE_SYSTEM_BUILD_PLAN.md
@@ -54,6 +58,11 @@ export type StillConcept = z.infer<typeof StillConceptSchema>;
 
 export const ConceptAgentOutputSchema = z.object({
   concepts: z.array(StillConceptSchema).min(1),
+  // NON-BLOCKING asset wishes — never a reason to skip/degrade a concept.
+  asset_requests: z
+    .array(AgentAssetRequestSchema)
+    .max(MAX_ASSET_REQUESTS_PER_RUN)
+    .default([]),
 });
 export type ConceptAgentOutput = z.infer<typeof ConceptAgentOutputSchema>;
 

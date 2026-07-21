@@ -10,6 +10,7 @@ export const RunType = z.enum([
   "format_scan",
   "reference_annotate",
   "brief_suggestions",
+  "creative_regen",
 ]);
 export type RunType = z.infer<typeof RunType>;
 

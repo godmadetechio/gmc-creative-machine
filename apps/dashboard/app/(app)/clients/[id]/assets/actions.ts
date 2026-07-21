@@ -43,15 +43,37 @@ export async function registerAsset(
   const { client_id, kind, storage_path, notes } = parsed.data;
 
   const supabase = await createClient();
-  const { error } = await supabase.from("client_assets").insert({
-    client_id,
-    kind,
-    bucket: CLIENT_ASSETS_BUCKET,
-    storage_path,
-    notes,
-  });
+  const { data: asset, error } = await supabase
+    .from("client_assets")
+    .insert({
+      client_id,
+      kind,
+      bucket: CLIENT_ASSETS_BUCKET,
+      storage_path,
+      notes,
+    })
+    .select("id")
+    .single();
   if (error) {
     return { status: "error", message: error.message };
+  }
+
+  // Auto-close assist: a manual upload of a requested kind flags matching
+  // open asset requests as "possibly fulfilled" for one-click confirm on
+  // the client page (never silently closes them).
+  if (asset) {
+    const { error: flagError } = await supabase
+      .from("asset_requests")
+      .update({ possibly_fulfilled_asset_id: asset.id })
+      .eq("client_id", client_id)
+      .eq("status", "open")
+      .eq("requested_kind", kind)
+      .is("possibly_fulfilled_asset_id", null);
+    if (flagError) {
+      console.warn(
+        `[assets] failed to flag matching asset requests: ${flagError.message}`,
+      );
+    }
   }
 
   revalidatePath(`/clients/${client_id}/assets`);
