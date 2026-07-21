@@ -82,8 +82,18 @@ export async function getAssetManifest(
     const parsed = ReferenceLibraryEntrySchema.safeParse(pick.reference);
     if (!parsed.success || parsed.data.status !== "active") continue;
     const reference = parsed.data;
+    // Provenance marker: annotation is a draft of judgment, so the concept
+    // agent slightly prefers human-noted references. A per-client override
+    // is human judgment regardless of who wrote the library brief.
+    const source = pick.note_override
+      ? "human-noted"
+      : reference.annotation_source === "ai"
+        ? "ai-noted"
+        : reference.annotation_source === "human"
+          ? "human-noted"
+          : "un-noted";
     const notes = [
-      `[swipe file] ${reference.title}`,
+      `[swipe file · ${source}] ${reference.title}`,
       pick.note_override ?? reference.notes,
       reference.format_name ? `exemplifies format: ${reference.format_name}` : null,
     ]

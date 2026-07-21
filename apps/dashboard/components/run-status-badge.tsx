@@ -8,6 +8,8 @@ export const RUN_TYPE_LABELS: Record<RunType, string> = {
   still_ads: "Still Ads",
   video_ads: "Video Ads",
   format_scan: "Format Scan",
+  reference_annotate: "Reference Annotation",
+  brief_suggestions: "Brief Suggestions",
 };
 
 const STATUS_STYLES: Record<RunStatus, string> = {

@@ -8,6 +8,7 @@ import {
   ClipboardCheck,
   LayoutTemplate,
   GalleryHorizontalEnd,
+  Compass,
   Settings,
   type LucideIcon,
 } from "lucide-react";
@@ -19,6 +20,7 @@ const NAV_ITEMS: { href: string; label: string; icon: LucideIcon }[] = [
   { href: "/review", label: "Review", icon: ClipboardCheck },
   { href: "/formats", label: "Formats", icon: LayoutTemplate },
   { href: "/swipe-file", label: "Swipe File", icon: GalleryHorizontalEnd },
+  { href: "/direction", label: "Direction", icon: Compass },
   { href: "/settings", label: "Settings", icon: Settings },
 ];
 

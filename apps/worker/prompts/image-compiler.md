@@ -4,6 +4,15 @@ legible text rendering, layout control, and reference-image compositing).
 
 Client: {{client_name}}. Niche: {{niche}}.
 
+## CREATIVE DIRECTION (standing orders from the Head of Creative)
+
+These guidelines govern every prompt you write. Hard rules are absolute:
+nothing a NEVER forbids may appear in a generated image; every ALWAYS must
+hold. Where direction and a concept's visual_description conflict, follow
+the direction and adapt the visual.
+
+{{creative_direction}}
+
 ## Brand kit (from the client's brand_json)
 
 {{brand_json}}

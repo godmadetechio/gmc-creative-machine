@@ -17,6 +17,7 @@ import { withValidationRetry } from "../agent";
 import { getAssetManifest, type AssetManifest, type ManifestAsset } from "../asset-library";
 import { mapWithConcurrency } from "../concurrency";
 import { CostTracker } from "../cost";
+import { getCreativeDirection } from "../creative-direction";
 import { createDriveUploader, getDriveConfig } from "../drive";
 import { getFormatLibrary } from "../format-library";
 import {
@@ -32,9 +33,8 @@ import type { PipelineHandler } from "./index";
 // Pro generations with identity/style/product references from the Client
 // Asset Library.
 
-// Format library vertical for concept selection. Becomes a client column
-// when the roster spans verticals; every current client is coaching.
-const CLIENT_VERTICAL = "coaching" as const;
+// Fallback when clients.vertical is unset (pre-direction-migration rows).
+const DEFAULT_VERTICAL = "coaching" as const;
 // Generations in flight at once (fal queues fairly; 4 keeps us clear of
 // rate limits while saturating a run).
 const GENERATION_CONCURRENCY = 4;
@@ -146,9 +146,25 @@ export async function runStillAds(
   }
   const winnerIds = new Set(winners.map((w) => w.id));
 
+  const vertical = client.vertical ?? DEFAULT_VERTICAL;
   const manifest = await getAssetManifest(supabase, clientId);
+
+  // CREATIVE DIRECTION: standing orders both agents obey. Directive-linked
+  // references are standing orders too — merged into the style pool (and
+  // the id space concept validation checks) whether or not the client
+  // picked them.
+  const direction = await getCreativeDirection(supabase, clientId, vertical);
+  warnings.push(...direction.warnings);
+  const manifestIds = new Set(
+    Object.values(manifest.assets).flatMap((list) => (list ?? []).map((a) => a.id)),
+  );
+  for (const ref of direction.references) {
+    if (manifestIds.has(ref.id)) continue;
+    (manifest.assets.inspiration_ad ??= []).push(ref);
+  }
+
   const assetById = manifestAssetById(manifest);
-  const formats = await getFormatLibrary(supabase, { vertical: CLIENT_VERTICAL });
+  const formats = await getFormatLibrary(supabase, { vertical });
   if (formats.length === 0) {
     warnings.push("Format library is empty — concepts will lean on winner skeletons only.");
   }
@@ -186,6 +202,7 @@ export async function runStillAds(
   const conceptResult = await withValidationRetry(ConceptAgentOutputSchema, {
     prompt: loadPrompt("concept-agent", {
       concept_count: input.concept_count,
+      creative_direction: direction.text,
       client_name: client.name,
       niche: client.niche ?? "not specified",
       brief: client.brief ?? "not specified",
@@ -279,6 +296,7 @@ export async function runStillAds(
     try {
       const result = await withValidationRetry(CompilerOutputSchema, {
         prompt: loadPrompt("image-compiler", {
+          creative_direction: direction.text,
           client_name: client.name,
           niche: client.niche ?? "not specified",
           brand_json: client.brand_json
@@ -483,6 +501,7 @@ export async function runStillAds(
       storage_path: primary.storagePath,
       aspect_files: aspectFiles,
       concept_json: concept,
+      directives_used: direction.versionsUsed,
       file_url: drive?.webViewLink ?? null,
       drive_file_id: drive?.id ?? null,
       status: "draft" as const,
@@ -519,6 +538,7 @@ export async function runStillAds(
       concept_count: concepts.length,
       bbm_version: bbmVersion.version,
       winners_used: winners.length,
+      directives_used: direction.versionsUsed,
       aspects: input.aspects,
       generation_cost_usd: Number(generationCost.toFixed(4)),
       agent_cost_usd: Number(cost.total.toFixed(4)),

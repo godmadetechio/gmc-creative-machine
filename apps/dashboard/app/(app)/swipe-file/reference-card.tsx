@@ -1,7 +1,7 @@
 "use client";
 
 import { useActionState, useState } from "react";
-import { Archive, ArchiveRestore, ExternalLink, Pencil } from "lucide-react";
+import { Archive, ArchiveRestore, Check, ExternalLink, Pencil, Sparkles } from "lucide-react";
 import { SeedVertical, type ReferenceLibraryEntry } from "@gmc/shared";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -20,6 +20,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 import {
+  approveReference,
   setReferenceStatus,
   updateReference,
   type ReferenceActionState,
@@ -48,8 +49,13 @@ export function ReferenceCard({
     ReferenceActionState,
     FormData
   >(setReferenceStatus, null);
+  const [approveState, approveAction, approving] = useActionState<
+    ReferenceActionState,
+    FormData
+  >(approveReference, null);
 
   const archived = reference.status === "archived";
+  const needsReview = reference.status === "needs_review";
 
   return (
     <Card className={cn("overflow-hidden py-0", archived && "opacity-60")}>
@@ -72,6 +78,12 @@ export function ReferenceCard({
         {archived && (
           <Badge variant="secondary" className="absolute top-2 left-2">
             Archived
+          </Badge>
+        )}
+        {needsReview && (
+          <Badge className="absolute top-2 left-2 gap-1 border-transparent bg-amber-500/90 text-white">
+            <Sparkles className="size-3" />
+            AI notes — review
           </Badge>
         )}
         <div className="absolute top-2 right-2 flex gap-1">
@@ -235,6 +247,21 @@ export function ReferenceCard({
               </Badge>
             ))}
           </div>
+        )}
+        {needsReview && (
+          <form action={approveAction} className="flex flex-col gap-1">
+            <input type="hidden" name="reference_id" value={reference.id} />
+            <Button type="submit" size="sm" disabled={approving}>
+              <Check />
+              Approve AI notes
+            </Button>
+            <p className="text-muted-foreground text-xs">
+              …or edit ✎ to refine — saving an edit approves it as your own.
+            </p>
+            {approveState?.status === "error" && (
+              <p className="text-destructive text-sm">{approveState.message}</p>
+            )}
+          </form>
         )}
         {statusState?.status === "error" && (
           <p className="text-destructive text-sm">{statusState.message}</p>
