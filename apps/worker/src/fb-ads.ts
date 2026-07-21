@@ -3,6 +3,7 @@
 // page URLs), not raw keywords — the pipeline builds the URLs.
 
 import { callActor } from "./apify";
+import { mapWithConcurrency, type SettledResult } from "./concurrency";
 //
 // Input shape verified against the live actor schema via
 // `pnpm --filter worker fbads:test`. Real fields: urls (required),
@@ -448,9 +449,7 @@ const RETRYABLE_NETWORK_RE =
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-export type ScrapeResult =
-  | { status: "fulfilled"; value: RawItem[] }
-  | { status: "rejected"; reason: unknown };
+export type ScrapeResult = SettledResult<RawItem[]>;
 
 // Scrapes each URL through the actor with at most SCRAPE_CONCURRENCY runs
 // in flight. Retries once (short backoff) on network-level failures and on
@@ -502,20 +501,5 @@ export async function scrapeAdLibraryUrls(
     return items;
   }
 
-  const results: ScrapeResult[] = new Array(urls.length);
-  let cursor = 0;
-  await Promise.all(
-    Array.from({ length: Math.min(SCRAPE_CONCURRENCY, urls.length) }, async () => {
-      for (;;) {
-        const i = cursor++;
-        if (i >= urls.length) return;
-        try {
-          results[i] = { status: "fulfilled", value: await scrapeOne(urls[i]!) };
-        } catch (reason) {
-          results[i] = { status: "rejected", reason };
-        }
-      }
-    }),
-  );
-  return results;
+  return mapWithConcurrency(urls, SCRAPE_CONCURRENCY, scrapeOne);
 }

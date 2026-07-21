@@ -135,6 +135,95 @@ export async function enqueueCreativeSelection(
   return { status: "success" };
 }
 
+const EnqueueStillAdsInputSchema = z.object({
+  client_id: z.string().uuid(),
+  concept_count: z.coerce.number().int().min(1).max(20),
+});
+
+export async function enqueueStillAds(
+  _prevState: EnqueueState,
+  formData: FormData,
+): Promise<EnqueueState> {
+  const parsed = EnqueueStillAdsInputSchema.safeParse({
+    client_id: formData.get("client_id"),
+    concept_count: formData.get("concept_count"),
+  });
+  if (!parsed.success) {
+    return { status: "error", message: "Invalid input" };
+  }
+  const { client_id, concept_count } = parsed.data;
+
+  const supabase = await createClient();
+
+  // Still ads need the BBM (angles + avatars) and at least one selected
+  // winner (skeletons) — both hard requirements.
+  const { data: activeBbm, error: bbmError } = await supabase
+    .from("bbm_versions")
+    .select("id")
+    .eq("client_id", client_id)
+    .eq("is_active", true)
+    .limit(1);
+  if (bbmError) {
+    return { status: "error", message: bbmError.message };
+  }
+  if (!activeBbm || activeBbm.length === 0) {
+    return {
+      status: "error",
+      message:
+        "No active Buyer Brain Matrix for this client — run the Buyer Brain pipeline first.",
+    };
+  }
+
+  const { data: selected, error: selectedError } = await supabase
+    .from("ad_candidates")
+    .select("id")
+    .eq("client_id", client_id)
+    .eq("status", "selected")
+    .limit(1);
+  if (selectedError) {
+    return { status: "error", message: selectedError.message };
+  }
+  if (!selected || selected.length === 0) {
+    return {
+      status: "error",
+      message:
+        "No selected ad candidates — select at least one winner in the candidates queue first.",
+    };
+  }
+
+  // One Still Ads run at a time per client.
+  const { data: active, error: activeError } = await supabase
+    .from("runs")
+    .select("id")
+    .eq("client_id", client_id)
+    .eq("type", "still_ads")
+    .in("status", ["queued", "running"])
+    .limit(1);
+  if (activeError) {
+    return { status: "error", message: activeError.message };
+  }
+  if (active && active.length > 0) {
+    return {
+      status: "error",
+      message: "A Still Ads run is already queued or running for this client.",
+    };
+  }
+
+  const { error } = await supabase.from("runs").insert({
+    client_id,
+    type: "still_ads",
+    status: "queued",
+    input_json: { concept_count },
+  });
+  if (error) {
+    return { status: "error", message: error.message };
+  }
+
+  revalidatePath(`/clients/${client_id}`);
+  revalidatePath("/runs");
+  return { status: "success" };
+}
+
 const AddCompetitorSchema = z.object({
   client_id: z.string().uuid(),
   name: z.string().trim().min(1, "Name is required").max(120),

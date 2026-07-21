@@ -8,6 +8,8 @@
     "start": "tsx src/index.ts",
     "pipeline:test": "tsx src/scripts/pipeline-test.ts",
     "pipeline:test-selection": "tsx src/scripts/pipeline-test-selection.ts",
+    "pipeline:test-stills": "tsx src/scripts/pipeline-test-stills.ts",
+    "fal:test": "tsx src/scripts/fal-test.ts",
     "format:scan": "tsx src/scripts/format-scan-test.ts",
     "assets:backfill": "tsx src/scripts/backfill-inspiration-assets.ts",
     "reddit:test": "tsx src/scripts/reddit-tool-test.ts",
@@ -16,6 +18,7 @@
   },
   "dependencies": {
     "@anthropic-ai/claude-agent-sdk": "^0.3.209",
+    "@fal-ai/client": "^1.5.0",
     "@gmc/shared": "workspace:*",
     "@supabase/supabase-js": "^2.49.1",
     "dotenv": "^16.4.7",

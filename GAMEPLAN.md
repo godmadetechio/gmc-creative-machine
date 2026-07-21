@@ -14,7 +14,7 @@ Living playbook. Where we are, what's next, and the exact Claude Code prompt for
 | 2 — Creative Selection (1.B) | 🔄 FINAL STRETCH | Pipeline works end-to-end (scout → derive → scrape → score → queue). Breadth restructure in flight: 25-30 competitors, top-3-per-advertiser, collation dedupe, run_id/superseded. Then: human selects winners |
 | 1 patch — Avatars in BBM | ⬜ NEXT (30 min) | Composer emits 3-5 avatars; creatives get avatar tag (training §1) |
 | 2.5 — Client Asset Library | ⬜ | Collect owner photos, logo, brand hex codes, fonts, liked/hated ads |
-| 3 — Still Ads (Nano Banana) | ⬜ | Needs GEMINI_API_KEY · build WITH training upgrades §2 (frameworks, hook-first, wording rule, volume) |
+| 3 — Still Ads (Nano Banana) | 🔄 BUILT | Via fal.ai (FAL_API_KEY) · training upgrades §2 in · verify: `pnpm fal:test` → `pnpm pipeline:test-stills` (2×2 smoke) → full run |
 | 4 — Video Ads (Higgsfield+) | ⬜ | Needs HIGGSFIELD_API_KEY · build WITH training upgrades §3 (podcast/interview formats, cost routing, imperfection prompts) |
 | 5 — The flywheel | ⬜ | 2-week BBM refresh + diff, Winning Creative Doc, feedback injection, cost rollups |
 | 5.5 — Iteration Engine | ⬜ NEW | Remix winning hooks × bodies, new faces/formats — "new winners before old ones die" |
@@ -32,7 +32,7 @@ Living playbook. Where we are, what's next, and the exact Claude Code prompt for
 1. **Finish Phase 2**: merge breadth restructure → clean stale candidates → `pnpm pipeline:test-selection` → review the by-advertiser queue → **Select 3-5 winners** (aim for one identity-callout, one lead-magnet, one challenge/offer skeleton). Phase 2 = done.
 2. **Phase 1 avatar patch** (same-day, small — prompt below).
 3. **Phase 2.5** (prompt below) — have Ben's assets ready.
-4. **Phase 3** with training upgrades (prompt below). Get GEMINI_API_KEY first (aistudio.google.com).
+4. **Phase 3** is built (fal.ai Nano Banana Pro). Get FAL_API_KEY into .env.local, run `pnpm db:migrate`, then `pnpm fal:test` and `pnpm pipeline:test-stills`.
 
 ---
 
@@ -223,7 +223,7 @@ Buying Copilot (read-only v1).
 | Anthropic API key | All pipelines | ✅ |
 | Supabase | Everything | ✅ live |
 | Apify (+ Reddit, YouTube, FB Ad Library actors) | Phases 1-2 | ✅ token in .env.local, all three actors verified |
-| Gemini API key (AI Studio) | Phase 3 | ⬜ |
+| fal.ai API key (Nano Banana Pro) | Phase 3 | ⬜ verify with `pnpm fal:test` |
 | Higgsfield Cloud API | Phase 4 | ⬜ |
 | VO3/Kling via aggregator (kie.ai / muapi.ai) | Phase 4 b-roll (optional, cost-saver) | ⬜ price-check before Phase 4 |
 | Google Cloud (Drive API) | Phase 3+ delivery | ⬜ warn-and-skip until configured |

@@ -7,6 +7,8 @@
     "db:migrate": "supabase db push",
     "pipeline:test": "pnpm --filter worker pipeline:test",
     "pipeline:test-selection": "pnpm --filter worker pipeline:test-selection",
+    "pipeline:test-stills": "pnpm --filter worker pipeline:test-stills",
+    "fal:test": "pnpm --filter worker fal:test",
     "format:scan": "pnpm --filter worker format:scan",
     "assets:backfill": "pnpm --filter worker assets:backfill",
     "build": "pnpm -r build",
