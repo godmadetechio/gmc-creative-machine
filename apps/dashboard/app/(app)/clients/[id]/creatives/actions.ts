@@ -63,7 +63,6 @@ export async function approveCreative(
     };
   }
 
-  revalidatePath(`/clients/${client_id}/creatives`);
   revalidatePath(`/clients/${client_id}`);
   return { status: "success" };
 }
@@ -108,7 +107,6 @@ export async function rejectCreative(
   // A rejected creative can't stay in the Winning Doc (approve → reject flip).
   await supabase.from("winning_creatives").delete().eq("creative_id", creative_id);
 
-  revalidatePath(`/clients/${client_id}/creatives`);
   revalidatePath(`/clients/${client_id}`);
   return { status: "success" };
 }
@@ -175,7 +173,7 @@ export async function retryRejectedCreative(
   });
   if (error) return { status: "error", message: error.message };
 
-  revalidatePath(`/clients/${client_id}/creatives`);
+  revalidatePath(`/clients/${client_id}`);
   revalidatePath("/runs");
   return {
     status: "success",
@@ -213,7 +211,6 @@ export async function undoCreativeReview(
   }
   await supabase.from("winning_creatives").delete().eq("creative_id", creative_id);
 
-  revalidatePath(`/clients/${client_id}/creatives`);
   revalidatePath(`/clients/${client_id}`);
   return { status: "success" };
 }

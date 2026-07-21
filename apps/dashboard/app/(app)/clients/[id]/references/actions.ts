@@ -47,7 +47,6 @@ export async function toggleReferencePick(
     if (error) return { status: "error", message: error.message };
   }
 
-  revalidatePath(`/clients/${client_id}/references`);
   revalidatePath(`/clients/${client_id}`);
   return { status: "success" };
 }
@@ -85,6 +84,6 @@ export async function saveReferencePickNote(
     return { status: "error", message: error.message };
   }
 
-  revalidatePath(`/clients/${client_id}/references`);
+  revalidatePath(`/clients/${client_id}`);
   return { status: "success" };
 }

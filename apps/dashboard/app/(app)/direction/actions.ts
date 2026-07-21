@@ -82,7 +82,7 @@ export async function saveDirective(
 
   revalidatePath("/direction");
   if (client_id) {
-    revalidatePath(`/clients/${client_id}/brief`);
+    revalidatePath(`/clients/${client_id}`);
     revalidatePath(`/clients/${client_id}`);
   }
   return { status: "success", version: result.version };

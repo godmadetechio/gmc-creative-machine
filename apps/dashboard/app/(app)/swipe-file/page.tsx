@@ -10,12 +10,12 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { AutoRefresh } from "@/components/auto-refresh";
+import { signMany } from "@/lib/storage";
 import { createClient } from "@/lib/supabase/server";
 import { AnnotateButton } from "./annotate-button";
 import { ReferenceCard } from "./reference-card";
 import { ReferenceUploader } from "./reference-uploader";
 
-const SIGNED_URL_TTL_SECONDS = 60 * 60;
 
 type Filters = {
   tag?: string;
@@ -149,16 +149,12 @@ export default async function SwipeFilePage({
     runProgress = { done, total: Math.min(limit, done + unannotatedCount) };
   }
 
-  const urlByPath = new Map<string, string>();
-  const paths = references.map((r) => r.storage_path);
-  if (paths.length > 0) {
-    const { data: signed } = await supabase.storage
-      .from(REFERENCE_LIBRARY_BUCKET)
-      .createSignedUrls(paths, SIGNED_URL_TTL_SECONDS);
-    for (const item of signed ?? []) {
-      if (item.path && item.signedUrl) urlByPath.set(item.path, item.signedUrl);
-    }
-  }
+  // Grid previews are width-transformed thumbnails; full-res stays a click
+  // away via the card's source link.
+  const signed = await signMany(
+    REFERENCE_LIBRARY_BUCKET,
+    references.map((r) => r.storage_path),
+  );
 
   return (
     <div>
@@ -270,7 +266,7 @@ export default async function SwipeFilePage({
             <ReferenceCard
               key={reference.id}
               reference={reference}
-              previewUrl={urlByPath.get(reference.storage_path) ?? null}
+              previewUrl={signed.get(reference.storage_path)?.thumbUrl ?? null}
               formatNames={formatNames}
             />
           ))}

@@ -1,7 +1,11 @@
+import { cache } from "react";
 import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
 
-export async function createClient() {
+// cache(): one client per request/render pass, so helpers that sign storage
+// URLs (lib/storage.ts) and per-tab data loaders share a client instead of
+// re-reading cookies on every call.
+export const createClient = cache(async () => {
   const cookieStore = await cookies();
 
   return createServerClient(
@@ -25,4 +29,4 @@ export async function createClient() {
       },
     },
   );
-}
+});

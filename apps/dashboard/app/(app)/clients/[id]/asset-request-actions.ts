@@ -83,7 +83,6 @@ export async function fulfillAssetRequest(
     .is("possibly_fulfilled_asset_id", null);
 
   revalidatePath(`/clients/${client_id}`);
-  revalidatePath(`/clients/${client_id}/assets`);
   return { status: "success" };
 }
 

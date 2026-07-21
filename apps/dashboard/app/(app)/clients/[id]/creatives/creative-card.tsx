@@ -181,15 +181,19 @@ function ReviewControls({
 export function CreativeCard({
   creative,
   previewUrl,
+  fullUrl,
   aspectUrls,
 }: {
   creative: Creative;
-  /** Signed URL for the primary rendering (short-lived). */
+  /** Signed URL for the grid preview (thumbnail when transforms are on). */
   previewUrl: string | null;
+  /** Full-resolution signed URL for the zoom dialog; falls back to previewUrl. */
+  fullUrl?: string | null;
   /** aspect → signed URL for every rendered file of this variant. */
   aspectUrls: [string, string][];
 }) {
   const concept = StillConceptSchema.safeParse(creative.concept_json);
+  const dialogUrl = fullUrl ?? previewUrl;
 
   return (
     <Card className={cn("overflow-hidden py-0", creative.status === "rejected" && "opacity-60")}>
@@ -229,10 +233,10 @@ export function CreativeCard({
           </DialogHeader>
           <div className="grid gap-4 sm:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
             <div className="flex flex-col gap-2">
-              {previewUrl && (
+              {dialogUrl && (
                 // eslint-disable-next-line @next/next/no-img-element
                 <img
-                  src={previewUrl}
+                  src={dialogUrl}
                   alt={creative.hook ?? "Generated creative"}
                   className="w-full rounded-md"
                 />

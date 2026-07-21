@@ -106,8 +106,6 @@ export async function reviewCandidate(
     }
   }
 
-  revalidatePath(`/clients/${client_id}/candidates`);
   revalidatePath(`/clients/${client_id}`);
-  revalidatePath(`/clients/${client_id}/assets`);
   return { status: "success" };
 }
