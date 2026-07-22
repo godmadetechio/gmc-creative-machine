@@ -14,7 +14,7 @@ Living playbook. Where we are, what's next, and the exact Claude Code prompt for
 | 2 — Creative Selection (1.B) | 🔄 FINAL STRETCH | Pipeline works end-to-end (scout → derive → scrape → score → queue). Breadth restructure in flight: 25-30 competitors, top-3-per-advertiser, collation dedupe, run_id/superseded. Then: human selects winners |
 | 1 patch — Avatars in BBM | ⬜ NEXT (30 min) | Composer emits 3-5 avatars; creatives get avatar tag (training §1) |
 | 2.5 — Client Asset Library | ⬜ | Collect owner photos, logo, brand hex codes, fonts, liked/hated ads |
-| 3 — Still Ads (Nano Banana) | 🔄 BUILT | Via fal.ai (FAL_API_KEY) · training upgrades §2 in · verify: `pnpm fal:test` → `pnpm pipeline:test-stills` (2×2 smoke) → full run |
+| 3 — Still Ads (Nano Banana) | 🔄 BUILT | Via fal.ai (FAL_API_KEY) · training upgrades §2 in · verify: `pnpm fal:test` → `pnpm pipeline:test-stills` (2×2 smoke) → full run → thumb regression check: open one grid thumbnail URL directly — must show the FULL ad uncropped (transform is width-only + resize=contain; a cropped thumb means someone reintroduced height/cover) |
 | 4 — Video Ads (Higgsfield+) | ⬜ | Needs HIGGSFIELD_API_KEY · build WITH training upgrades §3 (podcast/interview formats, cost routing, imperfection prompts) |
 | 5 — The flywheel | ⬜ | 2-week BBM refresh + diff, Winning Creative Doc, feedback injection, cost rollups |
 | 5.5 — Iteration Engine | ⬜ NEW | Remix winning hooks × bodies, new faces/formats — "new winners before old ones die" |
