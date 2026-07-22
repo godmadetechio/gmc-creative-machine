@@ -40,6 +40,22 @@ function statusBadge(status: Creative["status"]) {
   return <Badge variant="outline">Draft</Badge>;
 }
 
+// Static class map so Tailwind can see every aspect class at build time.
+const ASPECT_CLASS: Record<string, string> = {
+  "4:5": "aspect-[4/5]",
+  "1:1": "aspect-square",
+  "9:16": "aspect-[9/16]",
+  "16:9": "aspect-video",
+};
+
+/** The rendered aspect of the primary file — falls back to the 4:5 default. */
+function creativeAspectClass(creative: Creative): string {
+  const files = creative.aspect_files ?? [];
+  const primary = files.find((f) => f.storage_path === creative.storage_path);
+  const aspect = primary?.aspect ?? files[0]?.aspect ?? "4:5";
+  return ASPECT_CLASS[aspect] ?? ASPECT_CLASS["4:5"];
+}
+
 export type ReviewControlsHandle = {
   approve: () => void;
   reject: () => void;
@@ -126,8 +142,14 @@ function ReviewControls({
     const canRetry = status === "rejected" && !!creative.feedback;
     return (
       <div className="flex flex-col gap-1">
-        <div className="flex items-center justify-between gap-2">
-          {statusBadge(status)}
+        <div
+          className={cn(
+            "flex items-center gap-2",
+            compact ? "justify-end" : "justify-between",
+          )}
+        >
+          {/* The compact footer already shows the status chip in its badge row. */}
+          {!compact && statusBadge(status)}
           <div className="flex items-center gap-1">
             {canRetry && (
               // Cheap single-image regen with the rejection feedback appended
@@ -207,13 +229,14 @@ function ReviewControls({
               />
             )}
             <div className="grid grid-cols-2 gap-2">
-              <Button type="submit" disabled={pending}>
+              <Button type="submit" size={compact ? "sm" : "default"} disabled={pending}>
                 <Check />
                 Approve
               </Button>
               <Button
                 type="button"
                 variant="outline"
+                size={compact ? "sm" : "default"}
                 onClick={() => setRejectOpen(true)}
                 disabled={pending}
               >
@@ -262,16 +285,21 @@ export function CreativeCard({
     <Card
       ref={cardRef}
       className={cn(
-        "overflow-hidden py-0",
+        "flex h-full flex-col gap-0 overflow-hidden py-0",
         status === "rejected" && "opacity-60",
         focused && "ring-primary ring-2 ring-offset-2",
       )}
     >
       <Dialog>
         <DialogTrigger asChild>
+          {/* Container matches the creative's rendered aspect + object-contain,
+              so the entire ad is always visible — never a zoomed crop. */}
           <button
             type="button"
-            className="bg-muted relative block aspect-[4/5] w-full cursor-zoom-in"
+            className={cn(
+              "bg-muted block w-full cursor-zoom-in",
+              creativeAspectClass(creative),
+            )}
             title="Preview"
           >
             {previewUrl ? (
@@ -281,7 +309,7 @@ export function CreativeCard({
               <img
                 src={previewUrl}
                 alt={creative.hook ?? "Generated creative"}
-                className="size-full object-cover"
+                className="size-full object-contain"
                 loading="lazy"
               />
             ) : (
@@ -289,7 +317,6 @@ export function CreativeCard({
                 No preview
               </div>
             )}
-            <div className="absolute top-2 right-2">{statusBadge(status)}</div>
           </button>
         </DialogTrigger>
         <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-3xl">
@@ -298,7 +325,13 @@ export function CreativeCard({
               {concept.success ? concept.data.headline : (creative.hook ?? "Creative")}
             </DialogTitle>
             <DialogDescription className="text-left">
-              {[creative.framework, creative.avatar].filter(Boolean).join(" · ")}
+              {[
+                creative.framework,
+                creative.avatar,
+                creative.cost_usd != null ? `$${creative.cost_usd.toFixed(2)}` : null,
+              ]
+                .filter(Boolean)
+                .join(" · ")}
             </DialogDescription>
           </DialogHeader>
           <div className="grid gap-4 sm:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
@@ -308,7 +341,7 @@ export function CreativeCard({
                 <img
                   src={dialogUrl}
                   alt={creative.hook ?? "Generated creative"}
-                  className="w-full rounded-md"
+                  className="bg-muted max-h-[70vh] w-full rounded-md object-contain"
                 />
               )}
               {aspectUrls.length > 1 && (
@@ -377,15 +410,18 @@ export function CreativeCard({
         </DialogContent>
       </Dialog>
 
-      <CardContent className="flex flex-col gap-3 px-4 pb-4">
-        <div>
-          <p className="line-clamp-2 text-sm font-medium">
-            {creative.hook ?? (concept.success ? concept.data.headline : "Untitled")}
-          </p>
-          <p className="text-muted-foreground mt-0.5 text-xs">
-            {[creative.framework, creative.avatar].filter(Boolean).join(" · ") || "—"}
-            {creative.cost_usd != null && ` · $${creative.cost_usd.toFixed(2)}`}
-          </p>
+      {/* mt-auto pins the footer to the card bottom so rows stay uniform. */}
+      <CardContent className="mt-auto flex flex-col gap-2 border-t px-3 py-3">
+        <p
+          className="truncate text-sm font-medium"
+          title={creative.hook ?? undefined}
+        >
+          {creative.hook ?? (concept.success ? concept.data.headline : "Untitled")}
+        </p>
+        <div className="flex flex-wrap items-center gap-1">
+          {creative.framework && <Badge variant="secondary">{creative.framework}</Badge>}
+          {creative.avatar && <Badge variant="outline">{creative.avatar}</Badge>}
+          {statusBadge(status)}
         </div>
         <ReviewControls
           creative={creative}
