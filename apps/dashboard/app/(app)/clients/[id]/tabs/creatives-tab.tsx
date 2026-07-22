@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Trophy } from "lucide-react";
+import { ChevronRight, Trophy } from "lucide-react";
 import {
   CreativeSchema,
   CREATIVES_BUCKET,
@@ -10,6 +10,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { ReviewKeysHint, ReviewKeysProvider } from "@/components/review-keys";
+import { RunStatusBadge } from "@/components/run-status-badge";
 import { signMany } from "@/lib/storage";
 import { createClient } from "@/lib/supabase/server";
 import { CreativeCard } from "../creatives/creative-card";
@@ -21,10 +22,27 @@ import {
   runConceptCount,
   runCreativeCount,
   RunsTable,
+  type RunRow,
 } from "../run-tables";
 
 type SearchParams = Record<string, string | string[] | undefined>;
 type Filters = { avatar?: string; framework?: string; status?: string };
+
+const runDateFormat = new Intl.DateTimeFormat("en-GB", {
+  dateStyle: "medium",
+  timeStyle: "short",
+});
+
+// Shared by the collapsed-runs summary line and the expanded table's column.
+function runResultSummary(run: RunRow): string {
+  const count = runCreativeCount(run.output_json);
+  const concepts = runConceptCount(run.input_json);
+  return count != null
+    ? `${count} creatives`
+    : concepts != null
+      ? `${concepts} concepts`
+      : "—";
+}
 
 function parseFilters(sp: SearchParams): Filters {
   const pick = (key: keyof Filters) =>
@@ -172,19 +190,28 @@ export async function CreativesTab({
       </div>
 
       {stillAdsRuns.length > 0 && (
-        <RunsTable
-          runs={stillAdsRuns}
-          detailHead="Result"
-          detail={(run) => {
-            const count = runCreativeCount(run.output_json);
-            const concepts = runConceptCount(run.input_json);
-            return count != null
-              ? `${count} creatives`
-              : concepts != null
-                ? `${concepts} concepts`
-                : "—";
-          }}
-        />
+        // Collapsed by default so the creatives grid starts above the fold;
+        // auto-open while a run is in flight so its progress stays visible.
+        <details className="group mt-3" open={hasActiveStillAdsRun}>
+          <summary className="hover:bg-muted/50 -mx-2 flex cursor-pointer list-none items-center gap-2 rounded-md px-2 py-1.5 text-sm [&::-webkit-details-marker]:hidden">
+            <ChevronRight className="text-muted-foreground size-4 shrink-0 transition-transform group-open:rotate-90" />
+            <span className="font-medium">Runs ({stillAdsRuns.length})</span>
+            <span className="text-muted-foreground">·</span>
+            <RunStatusBadge
+              status={stillAdsRuns[0].status}
+              stage={stillAdsRuns[0].stage}
+            />
+            <span className="text-muted-foreground truncate">
+              {runResultSummary(stillAdsRuns[0])} ·{" "}
+              {runDateFormat.format(new Date(stillAdsRuns[0].created_at))}
+            </span>
+          </summary>
+          <RunsTable
+            runs={stillAdsRuns}
+            detailHead="Result"
+            detail={runResultSummary}
+          />
+        </details>
       )}
 
       {all.length > 0 && (
@@ -223,7 +250,7 @@ export async function CreativesTab({
           <div className="mt-4">
             <ReviewKeysHint />
           </div>
-          <div className="mt-3 grid grid-cols-2 gap-4 md:grid-cols-3 xl:grid-cols-4">
+          <div className="mt-3 grid grid-cols-2 items-stretch gap-4 lg:grid-cols-3 2xl:grid-cols-4">
             {creatives.map((creative) => {
               const primary = creative.storage_path
                 ? signed.get(creative.storage_path)

@@ -15,7 +15,10 @@ import { createClient } from "@/lib/supabase/server";
 // (byte-identical to the pre-thumbnail behavior).
 
 export const SIGNED_URL_TTL_SECONDS = 60 * 60;
-export const GRID_THUMB_WIDTH = 480;
+// Grid cells render ~170px wide (2-col mobile) up to ~300px (3–4-col
+// desktop): 600px covers a 2x-DPR display at the largest cell without
+// serving full-res renders into small grid cells.
+export const GRID_THUMB_WIDTH = 600;
 const THUMB_QUALITY = 75;
 
 // Transforms only apply to images; videos (and gifs, which transforms
