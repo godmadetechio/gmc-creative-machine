@@ -301,6 +301,7 @@ export const buyerBrainHandler: PipelineHandler = async ({ supabase, run }) => {
         finding_counts: result.findingCounts,
         warnings: result.warnings,
         usage: result.usage,
+        cost_breakdown: { anthropic: result.costUsd },
       },
       cost_usd: result.costUsd,
       finished_at: new Date().toISOString(),

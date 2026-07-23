@@ -631,6 +631,7 @@ export async function runStillAds(
         directives_used: direction.versionsUsed,
         asset_requests: requestCount,
         agent_cost_usd: agentCost,
+        cost_breakdown: { anthropic: agentCost },
         warnings,
         usage: cost.usage,
       },
@@ -964,13 +965,21 @@ export const stillAdsHandler: PipelineHandler = async ({ supabase, run }) => {
   }
 
   // A resumed run already carries the concept stage's spend on the row —
-  // the final cost adds this stage on top instead of overwriting it.
+  // the final cost adds this stage on top instead of overwriting it. That
+  // prior spend was pure agent (anthropic) cost, so the provider breakdown
+  // folds it in on the anthropic side.
   const totalCost = Number(((run.cost_usd ?? 0) + result.costUsd).toFixed(4));
+  const costBreakdown = {
+    anthropic: Number(
+      ((run.cost_usd ?? 0) + result.costUsd - result.generationCostUsd).toFixed(4),
+    ),
+    fal: Number(result.generationCostUsd.toFixed(4)),
+  };
   const { error } = await supabase
     .from("runs")
     .update({
       status: "needs_review",
-      output_json: result.output,
+      output_json: { ...result.output, cost_breakdown: costBreakdown },
       cost_usd: totalCost,
       finished_at: new Date().toISOString(),
     })

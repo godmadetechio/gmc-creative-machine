@@ -179,6 +179,7 @@ export const creativeRegenHandler: PipelineHandler = async ({ supabase, run }) =
           ? { asset_id: input.asset_id }
           : { feedback: input.feedback }),
         aspect,
+        cost_breakdown: { fal: Number(result.costUsd.toFixed(4)) },
       },
       cost_usd: Number(result.costUsd.toFixed(4)),
       finished_at: new Date().toISOString(),

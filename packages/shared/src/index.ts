@@ -10,3 +10,4 @@ export * from "./still-ads";
 export * from "./reference-library";
 export * from "./creative-direction";
 export * from "./asset-request";
+export * from "./usage";

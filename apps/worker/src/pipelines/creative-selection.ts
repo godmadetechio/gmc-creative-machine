@@ -848,7 +848,7 @@ export const creativeSelectionHandler: PipelineHandler = async ({ supabase, run 
     .from("runs")
     .update({
       status: "needs_review",
-      output_json: result.output,
+      output_json: { ...result.output, cost_breakdown: { anthropic: result.costUsd } },
       cost_usd: result.costUsd,
       finished_at: new Date().toISOString(),
     })

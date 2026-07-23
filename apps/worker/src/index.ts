@@ -1,12 +1,15 @@
 import "./env";
 import { hostname } from "node:os";
 import { RunSchema } from "@gmc/shared";
+import { refreshProviderBalances } from "./balances";
 import { pipelines } from "./pipelines/index";
 import { createServiceClient } from "./supabase";
 
 const POLL_INTERVAL_MS = 10_000;
 // Liveness beat for the dashboard's "worker offline" banner (stale >2 min).
 const HEARTBEAT_INTERVAL_MS = 30_000;
+// External provider balance snapshots for the Usage page (best-effort).
+const BALANCE_REFRESH_INTERVAL_MS = 60 * 60 * 1000;
 
 function startHeartbeat(supabase: ReturnType<typeof createServiceClient>) {
   const workerId = `${hostname()}#${process.pid}`;
@@ -79,7 +82,21 @@ async function main() {
   );
   startHeartbeat(supabase);
 
+  // Hourly, fire-and-forget: a hung provider API must never stall the run
+  // loop, and a failed refresh only records its error (never blocks runs).
+  let lastBalanceRefresh = 0;
+  const maybeRefreshBalances = () => {
+    if (Date.now() - lastBalanceRefresh < BALANCE_REFRESH_INTERVAL_MS) return;
+    lastBalanceRefresh = Date.now();
+    void refreshProviderBalances(supabase).catch((err) =>
+      console.warn(
+        `[worker] balance refresh failed: ${err instanceof Error ? err.message : err}`,
+      ),
+    );
+  };
+
   for (;;) {
+    maybeRefreshBalances();
     const run = await claimNextRun(supabase);
     if (run) {
       console.log(`[worker] run ${run.id} (${run.type}) → running`);

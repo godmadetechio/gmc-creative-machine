@@ -10,6 +10,7 @@
     "pipeline:test-selection": "tsx src/scripts/pipeline-test-selection.ts",
     "pipeline:test-stills": "tsx src/scripts/pipeline-test-stills.ts",
     "fal:test": "tsx src/scripts/fal-test.ts",
+    "balances:test": "tsx src/scripts/balances-test.ts",
     "format:scan": "tsx src/scripts/format-scan-test.ts",
     "assets:backfill": "tsx src/scripts/backfill-inspiration-assets.ts",
     "reddit:test": "tsx src/scripts/reddit-tool-test.ts",

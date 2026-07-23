@@ -554,7 +554,7 @@ export const formatScanHandler: PipelineHandler = async ({ supabase, run }) => {
       // review surface — nothing pends, so the run is 'approved', not
       // 'needs_review'.
       status: "approved",
-      output_json: result.output,
+      output_json: { ...result.output, cost_breakdown: { anthropic: result.costUsd } },
       cost_usd: result.costUsd,
       finished_at: new Date().toISOString(),
     })

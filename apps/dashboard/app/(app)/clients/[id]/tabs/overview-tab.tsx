@@ -8,6 +8,7 @@ import {
   Gauge,
   Lightbulb,
   Sparkles,
+  Wallet,
 } from "lucide-react";
 import { type Client } from "@gmc/shared";
 import { Button } from "@/components/ui/button";
@@ -15,6 +16,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { RunStatusBadge } from "@/components/run-status-badge";
 import { getClientReadiness, type ClientReadiness } from "@/lib/readiness";
 import { relativeTime } from "@/lib/relative-time";
+import { getClientSpend } from "@/lib/spend";
 import { createClient } from "@/lib/supabase/server";
 import { RunBuyerBrainButton } from "../run-buyer-brain-button";
 import { RunCreativeSelectionButton } from "../run-creative-selection-button";
@@ -112,6 +114,42 @@ function ReadinessMeter({ readiness }: { readiness: ClientReadiness }) {
   );
 }
 
+const usd = (value: number) =>
+  `$${value.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+
+// We bill clients — internal run spend per client is margin visibility.
+function ClientSpendCard({
+  spend,
+}: {
+  spend: { thisMonthUsd: number; last30dUsd: number; allTimeUsd: number };
+}) {
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2 text-base">
+          <Wallet className="size-4" />
+          Spend
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="flex flex-col gap-1.5">
+        <p className="text-2xl font-bold tracking-tight">{usd(spend.thisMonthUsd)}</p>
+        <p className="text-muted-foreground text-sm">
+          this month · {usd(spend.last30dUsd)} last 30 days · {usd(spend.allTimeUsd)}{" "}
+          all time
+        </p>
+        <p className="text-muted-foreground text-xs">
+          Internal pipeline cost (agents + generation) metered from runs — what
+          this client costs us against what we bill. Agency-wide view on the{" "}
+          <Link href="/usage" className="underline">
+            Usage page
+          </Link>
+          .
+        </p>
+      </CardContent>
+    </Card>
+  );
+}
+
 function LatestRunLine({ run }: { run: RunRow | undefined }) {
   if (!run) return <p className="text-muted-foreground text-sm">No runs yet.</p>;
   return (
@@ -182,7 +220,10 @@ export async function OverviewTab({ client }: { client: Client }) {
   const draftCreatives = draftCreativesResult.count ?? 0;
   const anyRunActive = runs.some(isActiveRun);
   const planReviewPending = stillAdsRun?.status === "plan_review";
-  const readiness = await getClientReadiness(client);
+  const [readiness, spend] = await Promise.all([
+    getClientReadiness(client),
+    getClientSpend(client.id),
+  ]);
 
   return (
     <div className="mt-6 flex flex-col gap-6">
@@ -202,7 +243,10 @@ export async function OverviewTab({ client }: { client: Client }) {
         </CardContent>
       </Card>
 
-      <ReadinessMeter readiness={readiness} />
+      <div className="grid gap-4 lg:grid-cols-2">
+        <ReadinessMeter readiness={readiness} />
+        <ClientSpendCard spend={spend} />
+      </div>
 
       {client.brief && (
         <Card>

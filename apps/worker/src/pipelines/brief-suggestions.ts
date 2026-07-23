@@ -214,7 +214,7 @@ export const briefSuggestionsHandler: PipelineHandler = async ({ supabase, run }
       // Suggestions pend accept/dismiss on the client brief page; a run
       // with nothing to suggest is simply done.
       status: result.suggestionCount > 0 ? "needs_review" : "approved",
-      output_json: result.output,
+      output_json: { ...result.output, cost_breakdown: { anthropic: result.costUsd } },
       cost_usd: result.costUsd,
       finished_at: new Date().toISOString(),
     })

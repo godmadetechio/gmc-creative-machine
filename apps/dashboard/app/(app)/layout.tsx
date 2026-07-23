@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 import { Separator } from "@/components/ui/separator";
+import { LowBalanceBanner } from "@/components/low-balance-banner";
 import { SidebarNav } from "@/components/sidebar-nav";
 import { SignOutButton } from "@/components/sign-out-button";
 import { WorkerStatusBanner } from "@/components/worker-status-banner";
@@ -54,6 +55,7 @@ export default async function AppLayout({
       </aside>
       <div className="ml-56 flex flex-1 flex-col">
         <WorkerStatusBanner />
+        <LowBalanceBanner />
         <main className="flex-1 p-8">{children}</main>
       </div>
     </div>

@@ -482,7 +482,7 @@ export const referenceAnnotateHandler: PipelineHandler = async ({ supabase, run 
     .update({
       // Annotations pend human review in the Swipe File.
       status: "needs_review",
-      output_json: result.output,
+      output_json: { ...result.output, cost_breakdown: { anthropic: result.costUsd } },
       cost_usd: result.costUsd,
       finished_at: new Date().toISOString(),
     })
