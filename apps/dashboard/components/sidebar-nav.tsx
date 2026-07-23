@@ -6,6 +6,7 @@ import {
   Users,
   Play,
   ClipboardCheck,
+  Wallet,
   LayoutTemplate,
   GalleryHorizontalEnd,
   Compass,
@@ -24,6 +25,7 @@ const NAV_GROUPS: { heading: string | null; items: NavItem[] }[] = [
       { href: "/clients", label: "Clients", icon: Users },
       { href: "/runs", label: "Runs", icon: Play },
       { href: "/review", label: "Review", icon: ClipboardCheck },
+      { href: "/usage", label: "Usage", icon: Wallet },
     ],
   },
   {
