@@ -2,7 +2,8 @@
 
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
-import { isValidFacebookPageUrl } from "@gmc/shared";
+import { ClientSchema, isValidFacebookPageUrl } from "@gmc/shared";
+import { getClientReadiness } from "@/lib/readiness";
 import { createClient } from "@/lib/supabase/server";
 
 export type EnqueueState =
@@ -138,6 +139,10 @@ export async function enqueueCreativeSelection(
 const EnqueueStillAdsInputSchema = z.object({
   client_id: z.string().uuid(),
   concept_count: z.coerce.number().int().min(1).max(20),
+  /** Auto mode — skip the plan-review pause. Default: review ON. */
+  skip_review: z.literal("1").nullable().default(null),
+  /** Readiness override: run despite missing references/brand/brief. */
+  override_readiness: z.literal("1").nullable().default(null),
 });
 
 export async function enqueueStillAds(
@@ -147,6 +152,8 @@ export async function enqueueStillAds(
   const parsed = EnqueueStillAdsInputSchema.safeParse({
     client_id: formData.get("client_id"),
     concept_count: formData.get("concept_count"),
+    skip_review: formData.get("skip_review"),
+    override_readiness: formData.get("override_readiness"),
   });
   if (!parsed.success) {
     return { status: "error", message: "Invalid input" };
@@ -154,6 +161,31 @@ export async function enqueueStillAds(
   const { client_id, concept_count } = parsed.data;
 
   const supabase = await createClient();
+
+  // READINESS soft-block (authoritative re-check of what the button shows):
+  // ≥5 style references, brand colors, a brief. Overridable — unlike the
+  // BBM/winner gates below, which generation can't run without.
+  if (!parsed.data.override_readiness) {
+    const { data: clientRow, error: clientError } = await supabase
+      .from("clients")
+      .select("*")
+      .eq("id", client_id)
+      .maybeSingle();
+    if (clientError || !clientRow) {
+      return { status: "error", message: clientError?.message ?? "Client not found" };
+    }
+    const readiness = await getClientReadiness(ClientSchema.parse(clientRow));
+    if (!readiness.ready) {
+      const missing = readiness.items
+        .filter((item) => !item.ok)
+        .map((item) => `${item.label} (${item.detail})`)
+        .join("; ");
+      return {
+        status: "error",
+        message: `Client isn't creative-ready: ${missing}. Fix the gaps on the Assets tab, or check "Run anyway" to override.`,
+      };
+    }
+  }
 
   // Still ads need the BBM (angles + avatars) and at least one selected
   // winner (skeletons) — both hard requirements.
@@ -191,13 +223,14 @@ export async function enqueueStillAds(
     };
   }
 
-  // One Still Ads run at a time per client.
+  // One Still Ads run at a time per client — a paused plan counts: approve
+  // or discard it before starting another round.
   const { data: active, error: activeError } = await supabase
     .from("runs")
-    .select("id")
+    .select("id, status")
     .eq("client_id", client_id)
     .eq("type", "still_ads")
-    .in("status", ["queued", "running"])
+    .in("status", ["queued", "running", "plan_review"])
     .limit(1);
   if (activeError) {
     return { status: "error", message: activeError.message };
@@ -205,7 +238,10 @@ export async function enqueueStillAds(
   if (active && active.length > 0) {
     return {
       status: "error",
-      message: "A Still Ads run is already queued or running for this client.",
+      message:
+        active[0]?.status === "plan_review"
+          ? "A concept plan is awaiting review on the Creatives tab — approve or discard it first."
+          : "A Still Ads run is already queued or running for this client.",
     };
   }
 
@@ -213,7 +249,7 @@ export async function enqueueStillAds(
     client_id,
     type: "still_ads",
     status: "queued",
-    input_json: { concept_count },
+    input_json: { concept_count, skip_review: parsed.data.skip_review === "1" },
   });
   if (error) {
     return { status: "error", message: error.message };

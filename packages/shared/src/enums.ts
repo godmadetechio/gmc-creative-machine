@@ -17,6 +17,9 @@ export type RunType = z.infer<typeof RunType>;
 export const RunStatus = z.enum([
   "queued",
   "running",
+  // Two-stage still_ads: paused after the concept stage with the text-only
+  // plan awaiting human approval — the dashboard re-queues it to generate.
+  "plan_review",
   "needs_review",
   "approved",
   "failed",

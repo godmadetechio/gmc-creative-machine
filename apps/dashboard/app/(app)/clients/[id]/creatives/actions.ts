@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
-import { conceptSummaryForCreative } from "@gmc/shared";
+import { conceptSummaryForCreative, StillConceptSchema } from "@gmc/shared";
 import { createClient } from "@/lib/supabase/server";
 
 export type CreativeReviewState =
@@ -213,4 +213,124 @@ export async function undoCreativeReview(
 
   revalidatePath(`/clients/${client_id}`);
   return { status: "success" };
+}
+
+// ── Concept plan review (two-stage still_ads) ──────────────────────────────
+
+const PlanReviewInputSchema = z.object({
+  run_id: z.string().uuid(),
+  client_id: z.string().uuid(),
+  /** JSON array of the approved (possibly edited) StillConcepts. */
+  approved_json: z.string().min(2),
+});
+
+/**
+ * "Generate approved (N)": writes the human-curated concepts into the paused
+ * run's input_json and re-queues it — the worker resumes at the compile +
+ * generate stages with exactly these concepts.
+ */
+export async function submitPlanReview(
+  _prevState: CreativeReviewState,
+  formData: FormData,
+): Promise<CreativeReviewState> {
+  const parsed = PlanReviewInputSchema.safeParse({
+    run_id: formData.get("run_id"),
+    client_id: formData.get("client_id"),
+    approved_json: formData.get("approved_json"),
+  });
+  if (!parsed.success) {
+    return { status: "error", message: "Invalid input" };
+  }
+  const { run_id, client_id, approved_json } = parsed.data;
+
+  let rawConcepts: unknown;
+  try {
+    rawConcepts = JSON.parse(approved_json);
+  } catch {
+    return { status: "error", message: "Malformed plan payload" };
+  }
+  const concepts = z.array(StillConceptSchema).min(1).safeParse(rawConcepts);
+  if (!concepts.success) {
+    const issue = concepts.error.issues[0];
+    const conceptNo =
+      typeof issue?.path[0] === "number" ? `Concept ${issue.path[0] + 1}: ` : "";
+    return {
+      status: "error",
+      message: `${conceptNo}${issue?.path.slice(1).join(".") ?? ""} ${issue?.message ?? "invalid"} — every approved concept needs headline, subhead, CTA and at least 3 hooks.`,
+    };
+  }
+
+  const supabase = await createClient();
+  const { data: runRow, error: runError } = await supabase
+    .from("runs")
+    .select("id, client_id, type, status, input_json")
+    .eq("id", run_id)
+    .maybeSingle();
+  if (runError || !runRow) {
+    return { status: "error", message: runError?.message ?? "Run not found" };
+  }
+  if (runRow.client_id !== client_id || runRow.type !== "still_ads") {
+    return { status: "error", message: "Not a still-ads run for this client" };
+  }
+  if (runRow.status !== "plan_review") {
+    return { status: "error", message: "This run is no longer awaiting plan review." };
+  }
+
+  const priorInput = (runRow.input_json ?? {}) as Record<string, unknown>;
+  const { error: updateError } = await supabase
+    .from("runs")
+    .update({
+      status: "queued",
+      stage: null,
+      input_json: { ...priorInput, approved_concepts: concepts.data },
+    })
+    .eq("id", run_id)
+    .eq("status", "plan_review");
+  if (updateError) {
+    return { status: "error", message: updateError.message };
+  }
+
+  revalidatePath(`/clients/${client_id}`);
+  revalidatePath("/runs");
+  return {
+    status: "success",
+    message: `Generation queued for ${concepts.data.length} approved concept${concepts.data.length === 1 ? "" : "s"}.`,
+  };
+}
+
+/** Discard a paused plan entirely — the run ends without generation spend. */
+export async function discardPlan(
+  _prevState: CreativeReviewState,
+  formData: FormData,
+): Promise<CreativeReviewState> {
+  const parsed = z
+    .object({ run_id: z.string().uuid(), client_id: z.string().uuid() })
+    .safeParse({
+      run_id: formData.get("run_id"),
+      client_id: formData.get("client_id"),
+    });
+  if (!parsed.success) {
+    return { status: "error", message: "Invalid input" };
+  }
+  const { run_id, client_id } = parsed.data;
+
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from("runs")
+    .update({
+      status: "failed",
+      output_json: { error: "Concept plan discarded by operator before generation." },
+      finished_at: new Date().toISOString(),
+    })
+    .eq("id", run_id)
+    .eq("client_id", client_id)
+    .eq("type", "still_ads")
+    .eq("status", "plan_review");
+  if (error) {
+    return { status: "error", message: error.message };
+  }
+
+  revalidatePath(`/clients/${client_id}`);
+  revalidatePath("/runs");
+  return { status: "success", message: "Plan discarded." };
 }

@@ -16,6 +16,7 @@ export const RUN_TYPE_LABELS: Record<RunType, string> = {
 const STATUS_STYLES: Record<RunStatus, string> = {
   queued: "bg-muted text-muted-foreground",
   running: "bg-blue-500/15 text-blue-400",
+  plan_review: "bg-violet-500/15 text-violet-400",
   needs_review: "bg-amber-500/15 text-amber-400",
   approved: "bg-emerald-500/15 text-emerald-400",
   failed: "bg-red-500/15 text-red-400",
@@ -24,6 +25,7 @@ const STATUS_STYLES: Record<RunStatus, string> = {
 const STATUS_LABELS: Record<RunStatus, string> = {
   queued: "Queued",
   running: "Running",
+  plan_review: "Plan review",
   needs_review: "Needs review",
   approved: "Approved",
   failed: "Failed",

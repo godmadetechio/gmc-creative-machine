@@ -2,7 +2,10 @@ import Link from "next/link";
 import {
   ArrowRight,
   BookOpenText,
+  CheckCircle2,
+  CircleAlert,
   GalleryVerticalEnd,
+  Gauge,
   Lightbulb,
   Sparkles,
 } from "lucide-react";
@@ -10,6 +13,7 @@ import { type Client } from "@gmc/shared";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { RunStatusBadge } from "@/components/run-status-badge";
+import { getClientReadiness, type ClientReadiness } from "@/lib/readiness";
 import { relativeTime } from "@/lib/relative-time";
 import { createClient } from "@/lib/supabase/server";
 import { RunBuyerBrainButton } from "../run-buyer-brain-button";
@@ -35,7 +39,10 @@ function nextAction(state: {
   selectedWinners: number;
   draftCreatives: number;
   anyRunActive: boolean;
+  planReviewPending: boolean;
 }): string {
+  if (state.planReviewPending)
+    return "A still-ads concept plan is awaiting your review on the Creatives tab — generation starts after approval.";
   if (state.anyRunActive) return "A run is in flight — results land here when it finishes.";
   if (!state.hasActiveBbm)
     return "Run Buyer Brain first — every later step scores against the matrix.";
@@ -46,6 +53,63 @@ function nextAction(state: {
   if (state.draftCreatives > 0)
     return `Review the ${state.draftCreatives} draft creative${state.draftCreatives === 1 ? "" : "s"} on the Creatives tab.`;
   return "Run Still Ads to turn the BBM and selected winners into creatives.";
+}
+
+// Creative-readiness meter: the material still_ads needs, visible at
+// onboarding instead of discovered at run time.
+function ReadinessMeter({ readiness }: { readiness: ClientReadiness }) {
+  const done = readiness.items.filter((i) => i.ok).length;
+  const total = readiness.items.length;
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2 text-base">
+          <Gauge className="size-4" />
+          Creative readiness
+          <span
+            className={
+              readiness.ready
+                ? "text-sm font-normal text-emerald-500"
+                : "text-sm font-normal text-amber-500"
+            }
+          >
+            {done}/{total}
+          </span>
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="flex flex-col gap-3">
+        <div className="bg-muted h-1.5 w-full overflow-hidden rounded-full">
+          <div
+            className={readiness.ready ? "h-full bg-emerald-500" : "h-full bg-amber-500"}
+            style={{ width: `${Math.round((done / total) * 100)}%` }}
+          />
+        </div>
+        <ul className="flex flex-col gap-1.5 text-sm">
+          {readiness.items.map((item) => (
+            <li key={item.key} className="flex items-start gap-2">
+              {item.ok ? (
+                <CheckCircle2 className="mt-0.5 size-4 shrink-0 text-emerald-500" />
+              ) : (
+                <CircleAlert className="mt-0.5 size-4 shrink-0 text-amber-500" />
+              )}
+              <span>
+                <span className="font-medium">{item.label}</span>{" "}
+                <span className="text-muted-foreground">— {item.detail}</span>
+                {!item.ok && (
+                  <>
+                    {" "}
+                    <Link href={item.href} className="underline">
+                      Fix
+                    </Link>
+                  </>
+                )}
+              </span>
+            </li>
+          ))}
+        </ul>
+      </CardContent>
+    </Card>
+  );
 }
 
 function LatestRunLine({ run }: { run: RunRow | undefined }) {
@@ -117,6 +181,8 @@ export async function OverviewTab({ client }: { client: Client }) {
   const selectedWinners = selectedWinnersResult.count ?? 0;
   const draftCreatives = draftCreativesResult.count ?? 0;
   const anyRunActive = runs.some(isActiveRun);
+  const planReviewPending = stillAdsRun?.status === "plan_review";
+  const readiness = await getClientReadiness(client);
 
   return (
     <div className="mt-6 flex flex-col gap-6">
@@ -130,10 +196,13 @@ export async function OverviewTab({ client }: { client: Client }) {
               selectedWinners,
               draftCreatives,
               anyRunActive,
+              planReviewPending,
             })}
           </p>
         </CardContent>
       </Card>
+
+      <ReadinessMeter readiness={readiness} />
 
       {client.brief && (
         <Card>
@@ -241,6 +310,8 @@ export async function OverviewTab({ client }: { client: Client }) {
                 disabled={!!stillAdsRun && isActiveRun(stillAdsRun)}
                 hasActiveBbm={hasActiveBbm}
                 hasSelectedWinner={selectedWinners > 0}
+                readiness={readiness}
+                planPending={planReviewPending}
               />
               <Button asChild variant="ghost" size="sm">
                 <Link href={`/clients/${client.id}?tab=creatives`}>

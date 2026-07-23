@@ -3,6 +3,8 @@ import { ChevronRight, Trophy } from "lucide-react";
 import {
   CreativeSchema,
   CREATIVES_BUCKET,
+  StillAdsInputSchema,
+  StillAdsPlanOutputSchema,
   WinningCreativeSchema,
   type Client,
   type Creative,
@@ -11,9 +13,11 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { ReviewKeysHint, ReviewKeysProvider } from "@/components/review-keys";
 import { RunStatusBadge } from "@/components/run-status-badge";
+import { getClientReadiness } from "@/lib/readiness";
 import { signMany } from "@/lib/storage";
 import { createClient } from "@/lib/supabase/server";
 import { CreativeCard } from "../creatives/creative-card";
+import { PlanReview } from "../creatives/plan-review";
 import { RunStillAdsButton } from "../run-still-ads-button";
 import {
   isActiveRun,
@@ -133,6 +137,26 @@ export async function CreativesTab({
   const hasActiveBbm = (activeBbmResult.count ?? 0) > 0;
   const selectedWinners = winnersResult.count ?? 0;
   const hasActiveStillAdsRun = stillAdsRuns.some(isActiveRun);
+  const readiness = await getClientReadiness(client);
+
+  // A paused two-stage run: parse its text-only plan for the review panel.
+  const planRun = stillAdsRuns.find((run) => run.status === "plan_review");
+  const plan = planRun ? StillAdsPlanOutputSchema.safeParse(planRun.output_json) : null;
+  const planInput = planRun ? StillAdsInputSchema.safeParse(planRun.input_json ?? {}) : null;
+  const imagesPerConcept =
+    planInput?.success
+      ? planInput.data.variants_per_concept * planInput.data.aspects.length
+      : 3;
+  const formatOptions =
+    planRun && plan?.success
+      ? ((
+          await supabase
+            .from("format_library")
+            .select("name")
+            .eq("status", "active")
+            .order("name")
+        ).data ?? []).map((row) => row.name as string)
+      : [];
   const all = (creativesResult.data ?? []).map((row) => CreativeSchema.parse(row));
   const winning = (winningResult.data ?? []).map((row) => WinningCreativeSchema.parse(row));
 
@@ -185,6 +209,8 @@ export async function CreativesTab({
             disabled={hasActiveStillAdsRun}
             hasActiveBbm={hasActiveBbm}
             hasSelectedWinner={selectedWinners > 0}
+            readiness={readiness}
+            planPending={!!planRun}
           />
         </div>
       </div>
@@ -212,6 +238,23 @@ export async function CreativesTab({
             detail={runResultSummary}
           />
         </details>
+      )}
+
+      {planRun && plan?.success && (
+        <PlanReview
+          runId={planRun.id}
+          clientId={client.id}
+          concepts={plan.data.plan.concepts}
+          formatOptions={formatOptions}
+          agentCostUsd={planRun.cost_usd}
+          imagesPerConcept={imagesPerConcept}
+        />
+      )}
+      {planRun && plan && !plan.success && (
+        <p className="text-destructive mt-4 text-sm">
+          A run is paused at plan review but its plan payload could not be
+          parsed — discard it from the Runs table and re-run.
+        </p>
       )}
 
       {all.length > 0 && (
