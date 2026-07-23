@@ -250,7 +250,7 @@ export async function CreativesTab({
           <div className="mt-4">
             <ReviewKeysHint />
           </div>
-          <div className="mt-3 grid grid-cols-2 items-stretch gap-4 lg:grid-cols-3 2xl:grid-cols-4">
+          <div className="mt-3 grid grid-cols-2 items-stretch gap-4 lg:grid-cols-3 xl:grid-cols-4">
             {creatives.map((creative) => {
               const primary = creative.storage_path
                 ? signed.get(creative.storage_path)

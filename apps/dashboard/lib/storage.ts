@@ -13,6 +13,13 @@ import { createClient } from "@/lib/supabase/server";
 // Storage image transformations are plan-gated (Supabase Pro+). Default ON;
 // set NEXT_PUBLIC_SUPABASE_IMAGE_TRANSFORMS=0 to serve full-res everywhere
 // (byte-identical to the pre-thumbnail behavior).
+//
+// CROP HAZARD: Supabase transforms default to resize:'cover', which crops
+// server-side — the thumb file itself becomes a center crop that no CSS can
+// undo. Every transform here must stay WIDTH-ONLY (never pass height) AND
+// explicitly request resize:'contain' so the source aspect is preserved.
+// Regression check: open a grid thumb URL directly in the browser — it must
+// show the ENTIRE ad, uncropped.
 
 export const SIGNED_URL_TTL_SECONDS = 60 * 60;
 // Grid cells render ~170px wide (2-col mobile) up to ~300px (3–4-col
@@ -39,7 +46,10 @@ const signOneCached = cache(
       .createSignedUrl(
         path,
         SIGNED_URL_TTL_SECONDS,
-        width !== null ? { transform: { width, quality: THUMB_QUALITY } } : undefined,
+        // Width-only + contain: aspect-preserving downscale, never a crop.
+        width !== null
+          ? { transform: { width, resize: "contain", quality: THUMB_QUALITY } }
+          : undefined,
       );
     if (error || !data?.signedUrl) return null;
     return data.signedUrl;
@@ -99,5 +109,5 @@ export function adMediaThumbUrl(
   if (!transformsEnabled() || NON_TRANSFORMABLE_RE.test(path)) {
     return `${base}/storage/v1/object/public/${AD_MEDIA_BUCKET}/${path}`;
   }
-  return `${base}/storage/v1/render/image/public/${AD_MEDIA_BUCKET}/${path}?width=${width}&quality=${THUMB_QUALITY}`;
+  return `${base}/storage/v1/render/image/public/${AD_MEDIA_BUCKET}/${path}?width=${width}&resize=contain&quality=${THUMB_QUALITY}`;
 }
