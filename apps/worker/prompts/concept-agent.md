@@ -46,9 +46,19 @@ as a standing rule for this client — do not repeat a rejected direction.
 
 {{rejection_feedback}}
 
+## Recent run mix (bias AWAY from this)
+
+The format × treatment mix of this client's most recent still-ad rounds.
+Repetition is the enemy: the audience has already seen these. Unless
+creative direction or rejection feedback demands otherwise, bias the new
+batch AWAY from the formats and treatments that dominate below — a repeat
+of a dominant pairing needs a strong specific reason.
+
+{{recent_mix}}
+
 ## How to build each concept
 
-Every concept is one cell of FORMAT × ANGLE × AVATAR:
+Every concept is one cell of FORMAT × TREATMENT × ANGLE × AVATAR:
 
 - FORMAT: pick format_name from the format library (use its exact name and
   follow its skeleton), or from a selected winner's transferable_skeleton —
@@ -56,6 +66,16 @@ Every concept is one cell of FORMAT × ANGLE × AVATAR:
   descriptive format_name for it. Never more than 2 concepts on the same
   format. Prefer proven_in_vertical formats but include 1-2
   cross_vertical_import bets.
+- TREATMENT (visual_treatment): the visual EXECUTION language, orthogonal
+  to format — an "Us vs Them" can be typographic, handwritten, or an
+  illustration. Choose deliberately per concept:
+  - screenshot_ui — native-app mocks: iPhone Notes, text threads, tweet
+    cards, search results.
+  - typographic — bold type-led design; the words are the visual.
+  - photography — photo-led (usually pairs with identity/product modes).
+  - illustration — drawn or flat-graphic scenes and diagrams.
+  - handwritten — marker/whiteboard/scribble energy, imperfect on purpose.
+  - meme — meme-native layouts and references the feed already speaks.
 
 Format reliability mix (weight the batch by generation reliability):
 
@@ -132,6 +152,21 @@ your concepts. HARD RULES:
   index of the concept that used a fallback, or null if general).
 - Don't request what the manifest already has, and don't repeat near-
   identical requests — one good ask beats three variants of it.
+
+## Diversity quotas (hard requirements — checked in code)
+
+The same-style problem kills accounts: a batch that all looks alike tests
+one idea ten times. Your batch MUST satisfy:
+
+- At least {{min_formats}} distinct formats, and never more than
+  {{max_per_format}} concepts on the same format.
+- At least {{min_treatments}} distinct visual treatments.
+- Style-reference spread: never cite the same style reference asset as the
+  lead reference for more than 2 concepts — rotate through the picked
+  references so no single ad art-directs the whole run.
+
+A batch that misses these quotas is sent back to you exactly once with the
+violations listed — get the spread right the first time.
 
 Output exactly {{concept_count}} concepts. No two concepts may share the
 same (format, angle, avatar) triple.

@@ -22,21 +22,64 @@ export type AspectRatio = z.infer<typeof AspectRatio>;
 export const ReferenceMode = z.enum(["identity", "style", "product", "none"]);
 export type ReferenceMode = z.infer<typeof ReferenceMode>;
 
-// runs.input_json for a still_ads run.
-export const StillAdsInputSchema = z.object({
-  concept_count: z.number().int().min(1).max(20).default(10),
-  /**
-   * Statics per concept — one per hook (training §2b: hook-first). This is
-   * the text-native count; photo-compositing concepts compile extra hooks
-   * (+2, capped at 5) since generation attrition is expected there.
-   */
-  variants_per_concept: z.number().int().min(1).max(5).default(3),
-  aspects: z.array(AspectRatio).min(1).max(4).default(["4:5"]),
-  operator_prompt: z.string().default(""),
-  /** Hard ceiling on image-generation spend for the run. */
-  max_generation_usd: z.number().positive().max(200).default(15),
-});
-export type StillAdsInput = z.infer<typeof StillAdsInputSchema>;
+// The concept's visual EXECUTION language — orthogonal to format (an
+// "Us vs Them" format can be typographic or hand-drawn). First-class so
+// diversity quotas can span it and reviewers can filter by it.
+export const VisualTreatment = z.enum([
+  "screenshot_ui",
+  "typographic",
+  "photography",
+  "illustration",
+  "handwritten",
+  "meme",
+]);
+export type VisualTreatment = z.infer<typeof VisualTreatment>;
+
+// ---------------------------------------------------------------------------
+// Diversity quotas (the same-style problem). Enforced in the worker after
+// concept validation; the concept agent is told the same numbers up front.
+// Quotas scale down for small (smoke-test) runs via min(quota, concept_count).
+
+export const MIN_DISTINCT_FORMATS = 4;
+export const MAX_CONCEPTS_PER_FORMAT = 2;
+export const MIN_DISTINCT_TREATMENTS = 3;
+
+/**
+ * Quota violations for a concept batch — empty array means the batch passes.
+ * Pure so the worker (enforce + retry) and dashboard (plan display) agree.
+ */
+export function conceptDiversityViolations(
+  concepts: Pick<StillConcept, "format_name" | "visual_treatment">[],
+): string[] {
+  const violations: string[] = [];
+  const formatCounts = new Map<string, number>();
+  for (const c of concepts) {
+    const key = c.format_name.trim().toLowerCase();
+    formatCounts.set(key, (formatCounts.get(key) ?? 0) + 1);
+  }
+  const treatments = new Set(concepts.map((c) => c.visual_treatment));
+
+  const requiredFormats = Math.min(MIN_DISTINCT_FORMATS, concepts.length);
+  if (formatCounts.size < requiredFormats) {
+    violations.push(
+      `only ${formatCounts.size} distinct formats — need at least ${requiredFormats}`,
+    );
+  }
+  for (const [format, count] of formatCounts) {
+    if (count > MAX_CONCEPTS_PER_FORMAT) {
+      violations.push(
+        `${count} concepts share format "${format}" — max ${MAX_CONCEPTS_PER_FORMAT} per format`,
+      );
+    }
+  }
+  const requiredTreatments = Math.min(MIN_DISTINCT_TREATMENTS, concepts.length);
+  if (treatments.size < requiredTreatments) {
+    violations.push(
+      `only ${treatments.size} distinct visual treatments (${[...treatments].join(", ")}) — need at least ${requiredTreatments}`,
+    );
+  }
+  return violations;
+}
 
 // One concept from the concept agent: FORMAT × ANGLE × AVATAR, hook-first.
 export const StillConceptSchema = z.object({
@@ -46,6 +89,12 @@ export const StillConceptSchema = z.object({
   cta: z.string().min(1),
   /** Format library entry name, or a selected winner's skeleton name. */
   format_name: z.string().min(1),
+  /**
+   * Visual execution language, distinct from format. catch() keeps
+   * pre-migration concept_json rows readable (they default to typographic,
+   * the most common legacy execution).
+   */
+  visual_treatment: VisualTreatment.catch("typographic").default("typographic"),
   /** Exactly one named BBM avatar this concept speaks to. */
   avatar: z.string().min(1),
   /** The specific BBM pain/desire/belief cited, e.g. "pain: …" / "belief: …". */
@@ -59,6 +108,47 @@ export const StillConceptSchema = z.object({
   source_candidate_id: z.string().uuid().nullable().default(null),
 });
 export type StillConcept = z.infer<typeof StillConceptSchema>;
+
+// runs.input_json for a still_ads run.
+export const StillAdsInputSchema = z.object({
+  concept_count: z.number().int().min(1).max(20).default(10),
+  /**
+   * Statics per concept — one per hook (training §2b: hook-first). This is
+   * the text-native count; photo-compositing concepts compile extra hooks
+   * (+2, capped at 5) since generation attrition is expected there.
+   */
+  variants_per_concept: z.number().int().min(1).max(5).default(3),
+  aspects: z.array(AspectRatio).min(1).max(4).default(["4:5"]),
+  operator_prompt: z.string().default(""),
+  /** Hard ceiling on image-generation spend for the run. */
+  max_generation_usd: z.number().positive().max(200).default(15),
+  /**
+   * Auto mode: when true the run goes straight from concepts to image
+   * generation. Default OFF — the run pauses at 'plan_review' so a human
+   * directs the plan BEFORE money is spent on pixels.
+   */
+  skip_review: z.boolean().default(false),
+  /**
+   * Written by the dashboard's plan-review approval: the human-curated
+   * (possibly edited) concepts to generate. When present the pipeline skips
+   * the concept stage entirely and generates exactly these.
+   */
+  approved_concepts: z.array(StillConceptSchema).min(1).nullable().default(null),
+});
+export type StillAdsInput = z.infer<typeof StillAdsInputSchema>;
+
+// runs.output_json while a still_ads run is paused at status 'plan_review':
+// the text-only concept plan awaiting human approval. Kept minimal — the
+// dashboard renders/edits `plan.concepts` and writes the curated result back
+// into input_json.approved_concepts.
+export const StillAdsPlanSchema = z.object({
+  concepts: z.array(StillConceptSchema).min(1),
+});
+export type StillAdsPlan = z.infer<typeof StillAdsPlanSchema>;
+
+export const StillAdsPlanOutputSchema = z.object({
+  plan: StillAdsPlanSchema,
+});
 
 export const ConceptAgentOutputSchema = z.object({
   concepts: z.array(StillConceptSchema).min(1),

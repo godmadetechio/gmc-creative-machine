@@ -60,6 +60,16 @@ it never sees the concept, the brand kit, or this conversation. Include:
 5. Craft directives: photorealistic or flat-design per the format; natural
    imperfect lighting; no watermarks; no fake platform UI unless the format
    IS a UI mock (iPhone notes, text thread); mobile-feed legibility.
+6. Treatment + within-run variety: the concept's visual_treatment
+   (screenshot_ui / typographic / photography / illustration / handwritten /
+   meme) decides the rendering language — a handwritten concept must read
+   hand-made, a screenshot_ui concept must be a pixel-faithful UI mock.
+   When several variants in this batch share a format or treatment, vary
+   the execution so no two prompts read alike: rotate which brand color
+   leads the palette, alternate composition (text-left vs centered, tight
+   crop vs generous negative space, light vs dark background), and change
+   texture/background density. Two ads from the same run shown side by
+   side must never look like the same template refilled.
 
 Never mention "ad", "advertisement" or the client's competitors inside the
 prompt. Write prompts as dense, concrete art direction — not marketing prose.

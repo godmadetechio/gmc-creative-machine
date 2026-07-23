@@ -35,6 +35,8 @@ async function main() {
     aspects: ["4:5"],
     operator_prompt: "smoke test run — keep concepts simple",
     max_generation_usd: 2,
+    // End-to-end smoke: no human in the loop, go straight to generation.
+    skip_review: true,
   });
   console.log(
     `[pipeline:test-stills] client: ${client.name} (${client.id}) — 2 concepts × 2 variants`,
